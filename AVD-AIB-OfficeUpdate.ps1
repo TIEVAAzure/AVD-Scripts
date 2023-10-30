@@ -7,7 +7,7 @@ $updatecmdParms = "/Update User displaylevel=false"
 $MaxWait = 60*60
 $ProcessToCheck = "OfficeClickToRun"
 $LogHeader="AVD-AIB Office Update"
-Write-Host "$LogHeader - INFO : Office Update Process Started"
+Write-Host "$LogHeader - INFO $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") : Office Update Process Started"
 # Get currrent Process data
 # Logic Explained
 # Current Process is running indicating we got office installed,
@@ -41,7 +41,7 @@ do {
                 [Array]$AsyncProcs = Get-Process $ProcessToCheck -ErrorAction SilentlyContinue
             } Until (($InitialAsyncTime.Elapsed.TotalSeconds -gt 60*5) -or ($AsyncProcs.Count -gt 1))
             if ($AsyncProcs.Count -gt 1) {
-                Write-Host "$LogHeader - INFO $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") : Multiple Instancs of $ProccessToChek Present, monitoring.."
+                Write-Host "$LogHeader - INFO $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") : Multiple Instancs of $ProcessToChek Present, monitoring.."
                 # Updater completed, now monitor the process count for the async update
                 $TimesToWait = 6
                 $AsyncCount = 0
