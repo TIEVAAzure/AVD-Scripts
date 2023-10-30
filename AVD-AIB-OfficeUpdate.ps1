@@ -24,7 +24,7 @@ $TryingToStart = [System.Diagnostics.Stopwatch]::StartNew()
 do {
     [Array]$InitalProcesses=Get-Process $ProcessToCheck -ErrorAction SilentlyContinue
     if ($InitalProcesses.Count -eq 1) {
-        Write-Host "$LogHeader - INFO : Starting officeC2RClient"
+        Write-Host "$LogHeader - INFO $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") : Starting officeC2RClient"
         # Should be TRY/Catched
         Start-Process -FilePath $updatecmd -ArgumentList $updatecmdParms
         $UpdaterRunTime = [System.Diagnostics.Stopwatch]::StartNew()
@@ -33,7 +33,7 @@ do {
             $UpdaterDoneRunning = ((get-process "OfficeC2RClient" -ea SilentlyContinue) -eq $Null)
         } until (($UpdaterDoneRunning) -or ($UpdaterRunTime.Elapsed.TotalSeconds -gt 60*10))
         if ($true -eq $UpdaterDoneRunning) {
-            Write-Host "$LogHeader - INFO : Waiting for multiple instances of $ProcessToCheck"
+            Write-Host "$LogHeader - INFO $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") : Waiting for multiple instances of $ProcessToCheck"
             # First we check to see that 2 processes ARE runnning - max wait 5 minutes THEN we monitor for 1
             $InitialAsyncTime = [System.Diagnostics.Stopwatch]::StartNew()
             do {
@@ -41,7 +41,7 @@ do {
                 [Array]$AsyncProcs = Get-Process $ProcessToCheck -ErrorAction SilentlyContinue
             } Until (($InitialAsyncTime.Elapsed.TotalSeconds -gt 60*5) -or ($AsyncProcs.Count -gt 1))
             if ($AsyncProcs.Count -gt 1) {
-                Write-Host "$LogHeader - INFO : Multiple Instancs of $ProccessToChek Present, monitoring.."
+                Write-Host "$LogHeader - INFO $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") : Multiple Instancs of $ProccessToChek Present, monitoring.."
                 # Updater completed, now monitor the process count for the async update
                 $TimesToWait = 6
                 $AsyncCount = 0
@@ -74,13 +74,13 @@ do {
                 } until (($true -eq $UpdateComplete) -or ($ErrorState -ne 0))
             }
             else {
-                Write-Host "$LogHeader - ERROR : Multiple Process never spawned of $ProcessToCheck"
+                Write-Host "$LogHeader - ERROR $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") : Multiple Process never spawned of $ProcessToCheck"
                 $ErrorState = 5
             }
         }
         else {
             # Updater was still running for 10 minutes, we abort as it should run for a few seconds only
-            Write-Host "$LogHeader - ERROR : OfficeC2RClient ran to long (10 mins)"
+            Write-Host "$LogHeader - ERROR $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") : OfficeC2RClient ran to long (10 mins)"
             $ErrorState = 2
         }
     }
@@ -91,40 +91,50 @@ do {
 } until (($ErrorState -ne 0) -or ($true -eq $UpdateComplete))
 #
 # Report Results
+$NewVersion = (Get-ItemProperty -path hklm:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration -Name VersionToReport).VersionToReport
 switch ($ErrorState) {
     0   {
-        $NewVersion = (Get-ItemProperty -path hklm:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration -Name VersionToReport).VersionToReport
-        Write-host "$LogHeader - INFO : Update Completed succesfully"
-        Write-Host "$LogHeader - INFO : Runtime $($TryingToStart.Elapsed)"
-        Write-host "$LogHeader - INFO : Version was : $ExistingVersion"
-        Write-Host "$LogHeader - INFO : Version is  : $NewVersion"
-        Write-Host "$LogHeader - INFO : Update completed without errors and had $AsyncCount Iterations"
+        Write-host "$LogHeader - INFO $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") : Update Completed succesfully"
+        Write-Host "$LogHeader - INFO $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") : Runtime $($TryingToStart.Elapsed)"
+        Write-host "$LogHeader - INFO $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") : Version was : $ExistingVersion"
+        Write-Host "$LogHeader - INFO $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") : Version is  : $NewVersion"
+        Write-Host "$LogHeader - INFO $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") : Update completed without errors and had $AsyncCount Iterations"
     }
     1   {
         # We ran out of time making sure there was just 1 instance running
-        Write-host "$LogHeader - ERROR : Update Aborted"
-        Write-Host "$LogHEader - ERROR : Ran out of time waiting for 1 instance of $ProcessToCheck to be present"
+        Write-host "$LogHeader - ERROR $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") : Update Aborted"
+        Write-host "$LogHeader - INFO  $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") : Version was : $ExistingVersion"
+        Write-Host "$LogHeader - INFO  $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") : Version is  : $NewVersion"
+        Write-Host "$LogHEader - ERROR $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") : Ran out of time waiting for 1 instance of $ProcessToCheck to be present"
         
     }
     2   {
         # Updater was running for 10 mins without spinning of Async tasks
-        Write-host "$LogHeader - ERROR : Update Aborted"
-        Write-Host "$LogHEader - ERROR : Ran out of time waiting for multiple instance of $ProcessToCheck to be present"
+        Write-host "$LogHeader - ERROR $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") : Update Aborted"
+        Write-host "$LogHeader - INFO  $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") : Version was : $ExistingVersion"
+        Write-Host "$LogHeader - INFO  $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") : Version is  : $NewVersion"
+        Write-Host "$LogHEader - ERROR $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") : Ran out of time waiting for multiple instance of $ProcessToCheck to be present"
     }
     3   {
         # Mid Update, no instances of $ProcessToCheck 
-        Write-host "$LogHeader - ERROR : Update Aborted"
-        Write-Host "$LogHEader - ERROR : Mid update all instances of $ProcessToCheck disappeared for more then 60 Seconds"
+        Write-host "$LogHeader - ERROR $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") : Update Aborted"
+        Write-host "$LogHeader - INFO  $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") : Version was : $ExistingVersion"
+        Write-Host "$LogHeader - INFO  $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") : Version is  : $NewVersion"
+        Write-Host "$LogHEader - ERROR $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") : Mid update all instances of $ProcessToCheck disappeared for more then 60 Seconds"
     }
     4   {
         # Update didnt complete in maxwait time after starting
-        Write-host "$LogHeader - ERROR : Update Aborted"
-        Write-Host "$LogHEader - ERROR : Update took longer than maximum allowed time - which is $MaxWait seconds "
+        Write-host "$LogHeader - ERROR $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") : Update Aborted"
+        Write-host "$LogHeader - INFO  $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") : Version was : $ExistingVersion"
+        Write-Host "$LogHeader - INFO  $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") : Version is  : $NewVersion"
+        Write-Host "$LogHEader - ERROR $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") : Update took longer than maximum allowed time - which is $MaxWait seconds "
     }
     5   {
         # Multiple instances of $ProcessToCheck never occured
-        Write-host "$LogHeader - ERROR : Update Aborted"
-        Write-Host "$LogHEader - ERROR : Multiple instances of $ProcessToCheck never spawned withing 5 minutes "
+        Write-host "$LogHeader - ERROR $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") : Update Aborted"
+        Write-host "$LogHeader - INFO  $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") : Version was : $ExistingVersion"
+        Write-Host "$LogHeader - INFO  $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") : Version is  : $NewVersion"
+        Write-Host "$LogHEader - ERROR $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") : Multiple instances of $ProcessToCheck never spawned withing 5 minutes "
 
     }
     Default {}
