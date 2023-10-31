@@ -39,7 +39,7 @@ switch ($ErrorState) {
         Write-Host "$LogHeader - $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") ERROR : Installer ($outputPath) not present on system"
     }
     Default {
-        Write-Host "$LogHeader - $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") ERROR : Installer exited with a Non Zero Result"
+        Write-Host "$LogHeader - $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") ERROR : Installer exited with a Non Zero Result ($ErrorState)"
     }
 }
 Write-Host "$LogHeader - $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") INFO  : Completed"
