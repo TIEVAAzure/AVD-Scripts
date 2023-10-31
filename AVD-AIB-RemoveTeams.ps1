@@ -16,6 +16,8 @@ write-host "$outputpath"
 Write-Host "$LogHeader - $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") INFO  : Started"
 if ((Test-Path $outputPath) -eq $true) {
     # Installer is there, now Uninstall 
+    Write-Host "$LogHeader - $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") INFO  : Dealying start by 5mins"
+    Start-Sleep 5*60
     try {
         Start-Process -FilePath msiexec.exe -Args "/x $outputPath  /quiet /norestart /log teams.log" -Wait
         $ErrorState=$LASTEXITCODE    
@@ -30,19 +32,19 @@ else {
 
 switch ($ErrorState) {
     0       {
-        Write-Host "$LogHeader - $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") INFO  : Uninstall Completed Succesfully"
+        Write-Host "$LogHeader - $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") INFO  : Uninstall Completed Succesfully ($ErrorState)"
     }
     -10     {
-        Write-Host "$LogHeader - $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") ERROR : Uninstaller Crashed it would appear"
+        Write-Host "$LogHeader - $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") ERROR : Uninstaller Crashed it would appear ($ErrorState)"
     }
     -11     {
-        Write-Host "$LogHeader - $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") ERROR : Installer ($outputPath) not present on system"
+        Write-Host "$LogHeader - $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") ERROR : Installer ($outputPath) not present on system ($ErrorState)"
     }
     Default {
         Write-Host "$LogHeader - $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") ERROR : Installer exited with a Non Zero Result ($ErrorState)"
     }
 }
-Write-Host "$LogHeader - $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") INFO  : Completed"
+Write-Host "$LogHeader - $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") INFO  : Completed ($ErrorState)"
 Exit $ErrorState
 
 
