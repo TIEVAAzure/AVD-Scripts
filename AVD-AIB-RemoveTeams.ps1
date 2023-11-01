@@ -15,15 +15,16 @@ $ErrorState = 0
 write-host "$outputpath"
 Write-Host "$LogHeader - $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") INFO  : Started"
 if ((Test-Path $outputPath) -eq $true) {
+    Set-Location $LocalPath
     # Installer is there, now Uninstall 
     Write-Host "$LogHeader - $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") INFO  : Dealying start by 5mins"
-    Start-Sleep 5*60
+    Start-Sleep (5*60)
     try {
-        Start-Process -FilePath msiexec.exe -Args "/x $outputPath  /quiet /norestart /log teams.log" -Wait
-        $ErrorState=$LASTEXITCODE    
+        $Process = Start-Process -FilePath msiexec.exe -Args "/x $outputPath  /quiet /norestart /log teams.log" -Wait -PassThru
+        $ErrorState=$Process.ExitCode
     }
     catch {
-        $ErrorState= -10
+        $ErrorState = -10
     }
 }
 else {
@@ -46,5 +47,3 @@ switch ($ErrorState) {
 }
 Write-Host "$LogHeader - $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") INFO  : Completed ($ErrorState)"
 Exit $ErrorState
-
-
