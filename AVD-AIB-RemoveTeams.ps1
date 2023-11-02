@@ -2,47 +2,45 @@
 #
 # Utilise the Teams Installer left on the machine from the buildin avd-aib scripts which is located in c:\teams
 #
-$teamsMsi = 'teams.msi'
-$drive = 'C:\'
-$appName = 'teams'
-$LocalPath = $drive + $appName
-$outputPath = $LocalPath + '\' + $teamsMsi
+# 
+$AppName = "Teams Machine-Wide Installer"
 $LogHeader = "AVD-AIB Teams MachineWide Uninstaller"
 $ErrorState = 0
 #
 #
-#
-write-host "$outputpath"
 Write-Host "$LogHeader - $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") INFO  : Started"
-if ((Test-Path $outputPath) -eq $true) {
-    Set-Location $LocalPath
-    # Installer is there, now Uninstall 
+[Array]$TeamsApps = get-package -Provider Programs -IncludeWindowsInstaller -Name $AppName -ErrorAction SilentlyContinue
+if ($TeamsApps.Count -eq 1) {
     Write-Host "$LogHeader - $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") INFO  : Dealying start by 5mins"
     Start-Sleep (5*60)
-    try {
-        $Process = Start-Process -FilePath msiexec.exe -Args "/x $outputPath  /quiet /norestart /log teams.log" -Wait -PassThru
-        $ErrorState=$Process.ExitCode
+    Write-Host "$LogHeader - $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") INFO  : Uninstalling $AppName"
+    [Array]$UninstallRes = Uninstall-Package -Name $AppName -ErrorAction SilentlyContinue
+    if ($UninstallRes.Count -eq 1) {
+        Write-Host "$LogHeader - $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") INFO  : Uninstall Status : $($UninstallRes[0].Status)"
     }
-    catch {
-        $ErrorState = -10
+    else {
+        $ErrorState = 2
     }
 }
+elseif ($TeamsApps.Count -gt 0) {
+        $ErrorState = 1
+}
 else {
-    $ErrorState = -11
+    Write-Host "$LogHeader - $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") INFO  : App : $AppName not found, this is good"
 }
 
 switch ($ErrorState) {
-    0       {
+    0   {
         Write-Host "$LogHeader - $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") INFO  : Uninstall Completed Succesfully ($ErrorState)"
     }
-    -10     {
-        Write-Host "$LogHeader - $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") ERROR : Uninstaller Crashed it would appear ($ErrorState)"
+    1   {
+        Write-Host "$LogHeader - $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") ERROR : More than 1 App returned matching $AppName"
     }
-    -11     {
-        Write-Host "$LogHeader - $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") ERROR : Installer ($outputPath) not present on system ($ErrorState)"
+    2   {
+        Write-Host "$LogHeader - $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") ERROR : More than 1 result returned from uninstall command"
     }
     Default {
-        Write-Host "$LogHeader - $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") ERROR : Installer exited with a Non Zero Result ($ErrorState)"
+        Write-Host "$LogHeader - $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") ERROR : Unknown Exitstate ($ErrorState)"
     }
 }
 Write-Host "$LogHeader - $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") INFO  : Completed ($ErrorState)"
