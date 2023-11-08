@@ -14,7 +14,7 @@ if ($TeamsApps.Count -eq 1) {
     Write-Host "$LogHeader - $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") INFO  : Dealying start by 5mins"
     Start-Sleep (5*60)
     Write-Host "$LogHeader - $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") INFO  : Uninstalling $AppName"
-    [Array]$UninstallRes = Uninstall-Package -Name $AppName -ErrorAction SilentlyContinue
+    [Array]$UninstallRes = Uninstall-Package -Name $AppName -ErrorAction SilentlyContinue -Force
     if ($UninstallRes.Count -eq 1) {
         Write-Host "$LogHeader - $(Get-Date -Format "yyyy/MM/dd HH:mm:ss") INFO  : Uninstall Status : $($UninstallRes[0].Status)"
     }
