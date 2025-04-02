@@ -22,6 +22,8 @@ $NewVersion = $ExistingVersion
 while (($NewVersion -eq $ExistingVersion) -and ($elapsed -lt $maxWaitSeconds)) {
     Start-Sleep -Seconds $pollInterval
     $elapsed += $pollInterval
+    $timeLeft = $maxWaitSeconds - $elapsed
+    Write-Host "Time left: $timeLeft seconds"
     try {
         $NewVersion = (Get-ItemProperty -Path "HKLM:\SOFTWARE\Microsoft\Office\ClickToRun\Configuration" -Name VersionToReport).VersionToReport
     }
