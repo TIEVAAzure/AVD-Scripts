@@ -2,6 +2,20 @@
 # Office Update Script with Online Version Check (Using UpdateChannel URL Mapping)
 #-----------------------------------------------
 
+# Exit Code Reference:
+# 0  - Success: Office is already up-to-date.
+# 1  - Error: Unable to read Office configuration from the registry.
+# 2  - Error: UpdateChannel URL is not recognized.
+# 3  - Error: Unable to convert version string to a version object.
+# 4  - Error: Unable to fetch the update history page.
+# 5  - Error: Beta Channel update checking is not supported by this script.
+# 6  - Error: Channel is not supported by this script.
+# 7  - Error: Could not extract online build information for the detected channel.
+# 8  - Error: Unable to convert build strings to version objects.
+# 9  - Error: Update did not complete within the timeout period.
+
+#-----------------------------------------------
+
 # Define arrays for the CDN base URLs and corresponding friendly channel names.
 $CDNBaseUrls = @(
     "http://officecdn.microsoft.com/pr/55336b82-a18d-4dd6-b5f6-9e5095c314a6",
