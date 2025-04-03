@@ -32,27 +32,27 @@ try {
     $ExistingVersionStr = $regProps.VersionToReport
     $updateChannelUrl = $regProps.UpdateChannel
 } catch {
-    Write-Host "Error reading Office configuration from registry: $_"
+    Write-Host "Error: Unable to read Office configuration from the registry. Exiting with code 1."
     exit 1
 }
 
 # 2. Determine the friendly channel name from the UpdateChannel URL.
 if ([string]::IsNullOrEmpty($updateChannelUrl)) {
-    Write-Host "UpdateChannel registry value is empty; defaulting to 'Current Channel'."
+    Write-Host "Warning: UpdateChannel registry value is empty. Defaulting to 'Current Channel'."
     $friendlyChannel = "Current Channel"
 } elseif ($channelMap.ContainsKey($updateChannelUrl)) {
     $friendlyChannel = $channelMap[$updateChannelUrl]
 } else {
-    Write-Host "UpdateChannel URL '$updateChannelUrl' is not recognized. Exiting."
-    exit 1
+    Write-Host "Error: UpdateChannel URL '$updateChannelUrl' is not recognized. Exiting with code 2."
+    exit 2
 }
 
 # Convert installed version string to a System.Version object.
 try {
     $ExistingVersion = [System.Version]$ExistingVersionStr
 } catch {
-    Write-Host "Error converting version string '$ExistingVersionStr' to a version object."
-    exit 1
+    Write-Host "Error: Unable to convert version string '$ExistingVersionStr' to a version object. Exiting with code 3."
+    exit 3
 }
 
 Write-Host "Office Update Process Started at $(Get-Date -Format 'yyyy/MM/dd HH:mm:ss')"
@@ -68,13 +68,12 @@ $url = 'https://learn.microsoft.com/en-us/officeupdates/update-history-microsoft
 try {
     $response = Invoke-WebRequest -Uri $url -UseBasicParsing -ErrorAction Stop
 } catch {
-    Write-Host "Error fetching the update history page: $_"
-    exit 1
+    Write-Host "Error: Unable to fetch the update history page. Exiting with code 4."
+    exit 4
 }
 $htmlContent = $response.Content
 
 # 5. Choose a regex pattern based on the friendly channel.
-# Use (?s) so that '.' matches newline characters.
 switch ($friendlyChannel) {
     "Current Channel" { 
         $pattern = '(?s)<tr>.*?<td[^>]*>.*?(Current Channel(?: \(Preview\))?)\s*<br>.*?</td>\s*<td[^>]*>.*?<br>.*?<td[^>]*>\s*(?<onlineBuild>[\d\.]+)\s*<br>'
@@ -89,12 +88,12 @@ switch ($friendlyChannel) {
         $pattern = '(?s)<tr>.*?<td[^>]*>.*?Semi-Annual Enterprise Channel(?: \(Preview\))?\s*<br>.*?</td>\s*<td[^>]*>.*?<br>.*?<td[^>]*>\s*(?<onlineBuild>[\d\.]+)\s*<br>'
     }
     "Beta Channel" {
-        Write-Host "Beta Channel update checking is not supported by this script."
-        exit 1
+        Write-Host "Error: Beta Channel update checking is not supported by this script. Exiting with code 5."
+        exit 5
     }
     Default {
-        Write-Host "Channel '$friendlyChannel' is not supported by this script."
-        exit 1
+        Write-Host "Error: Channel '$friendlyChannel' is not supported by this script. Exiting with code 6."
+        exit 6
     }
 }
 
@@ -102,8 +101,8 @@ if ($htmlContent -match $pattern) {
     $onlineBuild = $matches['onlineBuild']
     Write-Host "Latest online build for '$friendlyChannel': $onlineBuild"
 } else {
-    Write-Host "Could not extract online build information for channel '$friendlyChannel'."
-    exit 1
+    Write-Host "Error: Could not extract online build information for channel '$friendlyChannel'. Exiting with code 7."
+    exit 7
 }
 
 # 6. Convert the installed and online build strings to version objects for comparison.
@@ -111,8 +110,8 @@ try {
     $installedVerObj = [System.Version]$installedOnlineBuild
     $onlineVerObj = [System.Version]$onlineBuild
 } catch {
-    Write-Host "Error converting build strings to version objects: $_"
-    exit 1
+    Write-Host "Error: Unable to convert build strings to version objects. Exiting with code 8."
+    exit 8
 }
 
 # 7. Compare and update if necessary.
@@ -145,11 +144,11 @@ if ($installedVerObj -lt $onlineVerObj) {
          Write-Host "Update completed successfully at $(Get-Date -Format 'yyyy/MM/dd HH:mm:ss')."
          Write-Host "Version changed from $ExistingVersionStr to $NewVersionStr."
     } else {
-         Write-Host "Update did not complete within $maxWaitSeconds seconds."
-         Write-Host "Current version remains: $ExistingVersionStr."
+         Write-Host "Error: Update did not complete within $maxWaitSeconds seconds. Exiting with code 9."
+         exit 9
     }
 } else {
-    Write-Host "Office is already up-to-date for channel '$friendlyChannel'. No update required."
+    Write-Host "Office is already up-to-date for channel '$friendlyChannel'. No update required. Exiting with code 0."
     exit 0
 }
 #-----------------------------------------------
