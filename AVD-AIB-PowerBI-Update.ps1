@@ -7,11 +7,11 @@
 # 5 - Installation failed
 
 # Check if the script is running with elevated privileges
-if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
-    Write-Host "Restarting script with elevated privileges..."
-    Start-Process -FilePath "powershell.exe" -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
-    exit 1
-}
+#if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
+#    Write-Host "Restarting script with elevated privileges..."
+#    Start-Process -FilePath "powershell.exe" -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
+#    exit 1
+#}
 
 # Define the source URL and the target executable name
 $SourceUrl = "https://www.microsoft.com/en-us/download/details.aspx?id=58494"
@@ -33,7 +33,8 @@ Write-Host "Downloading source code from $SourceUrl..."
 Invoke-WebRequest -Uri $SourceUrl -OutFile $SourceFilePath
 
 # Verify the source code was downloaded
-if (-not (Test-Path -Path $SourceFilePath)) {
+if (-not (Test-Path -Path $SourceFilePath))
+{
     Write-Error "Failed to download source code."
     exit 2
 }
@@ -66,7 +67,7 @@ if (-not (Test-Path -Path $DownloadPath)) {
 
 # Install the application in silent mode without prompts
 Write-Host "Installing $TargetExecutable in silent mode without prompts..."
-Start-Process -FilePath $DownloadPath" /quiet /norestart ACCEPT_EULA=1" -Wait
+Start-Process -FilePath $DownloadPath -ArgumentList "/quiet /norestart ACCEPT_EULA=1" -Wait
 
 # Check if the installation was successful
 if ($LASTEXITCODE -ne 0) {
