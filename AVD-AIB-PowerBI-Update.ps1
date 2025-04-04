@@ -65,9 +65,9 @@ if (-not (Test-Path -Path $DownloadPath)) {
     exit 4
 }
 
-# Install the application in silent mode without prompts
+# Install the application in silent mode without prompts and output to screen
 Write-Host "Installing $TargetExecutable in silent mode without prompts..."
-Start-Process -FilePath $DownloadPath -ArgumentList "/quiet /norestart ACCEPT_EULA=1" -Wait
+Start-Process -FilePath $DownloadPath -ArgumentList "/quiet /norestart ACCEPT_EULA=1" -Wait -NoNewWindow
 
 # Check if the installation was successful
 if ($LASTEXITCODE -ne 0) {
