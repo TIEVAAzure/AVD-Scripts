@@ -1,8 +1,16 @@
+# Exit Code Reference:
+# 0 - Success
+# 1 - Script not run as administrator
+# 2 - Failed to download source code
+# 3 - Download URL for the target executable not found
+# 4 - Failed to download the target executable
+# 5 - Installation failed
+
 # Check if the script is running with elevated privileges
 if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdentity]::GetCurrent()).IsInRole([Security.Principal.WindowsBuiltInRole] "Administrator")) {
     Write-Host "Restarting script with elevated privileges..."
     Start-Process -FilePath "powershell.exe" -ArgumentList "-NoProfile -ExecutionPolicy Bypass -File `"$PSCommandPath`"" -Verb RunAs
-    exit
+    exit 1
 }
 
 # Define the source URL and the target executable name
@@ -19,7 +27,7 @@ Invoke-WebRequest -Uri $SourceUrl -OutFile $SourceFilePath
 # Verify the source code was downloaded
 if (-not (Test-Path -Path $SourceFilePath)) {
     Write-Error "Failed to download source code."
-    exit 1
+    exit 2
 }
 
 # Read the source code and find the URL for the target executable
@@ -32,7 +40,7 @@ $DownloadUrl = $SourceCode | Select-String -Pattern $TargetExecutable | ForEach-
 
 if (-not $DownloadUrl) {
     Write-Error "Download URL for $TargetExecutable not found in the source code."
-    exit 1
+    exit 3
 }
 
 # Define the local path to save the downloaded file
@@ -45,12 +53,18 @@ Invoke-WebRequest -Uri $DownloadUrl -OutFile $DownloadPath
 # Verify the file was downloaded
 if (-not (Test-Path -Path $DownloadPath)) {
     Write-Error "Failed to download $TargetExecutable."
-    exit 1
+    exit 4
 }
 
 # Install the application in silent mode without prompts
 Write-Host "Installing $TargetExecutable in silent mode without prompts..."
 Start-Process -FilePath $DownloadPath -ArgumentList "/quiet /norestart" -Wait
+
+# Check if the installation was successful
+if ($LASTEXITCODE -ne 0) {
+    Write-Error "Installation of $TargetExecutable failed."
+    exit 5
+}
 
 # Clean up the downloaded files
 Write-Host "Cleaning up..."
@@ -58,3 +72,4 @@ Remove-Item -Path $DownloadPath -Force
 Remove-Item -Path $SourceFilePath -Force
 
 Write-Host "$TargetExecutable installation completed successfully."
+exit 0
