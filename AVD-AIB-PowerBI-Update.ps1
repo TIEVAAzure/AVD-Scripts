@@ -17,8 +17,16 @@ if (-not ([Security.Principal.WindowsPrincipal] [Security.Principal.WindowsIdent
 $SourceUrl = "https://www.microsoft.com/en-us/download/details.aspx?id=58494"
 $TargetExecutable = "PBIDesktopSetup_x64.exe"
 
+# Define the local folder for temporary files
+$TempFolder = "c:\temp\powerbi"
+
+# Ensure the folder exists
+if (-not (Test-Path -Path $TempFolder)) {
+    New-Item -ItemType Directory -Path $TempFolder | Out-Null
+}
+
 # Define the local path to save the downloaded source code
-$SourceFilePath = Join-Path -Path $env:TEMP -ChildPath "SourceCode.html"
+$SourceFilePath = Join-Path -Path $TempFolder -ChildPath "SourceCode.html"
 
 # Download the source code
 Write-Host "Downloading source code from $SourceUrl..."
@@ -44,7 +52,7 @@ if (-not $DownloadUrl) {
 }
 
 # Define the local path to save the downloaded file
-$DownloadPath = Join-Path -Path $env:TEMP -ChildPath $TargetExecutable
+$DownloadPath = Join-Path -Path $TempFolder -ChildPath $TargetExecutable
 
 # Download the executable
 Write-Host "Downloading $TargetExecutable from $DownloadUrl..."
@@ -58,7 +66,7 @@ if (-not (Test-Path -Path $DownloadPath)) {
 
 # Install the application in silent mode without prompts
 Write-Host "Installing $TargetExecutable in silent mode without prompts..."
-Start-Process -FilePath $DownloadPath "/quiet /norestart ACCEPT_EULA=1" -Wait
+Start-Process -FilePath $DownloadPath -ArgumentList "/quiet /norestart ACCEPT_EULA=1" -Wait
 
 # Check if the installation was successful
 if ($LASTEXITCODE -ne 0) {
@@ -70,6 +78,11 @@ if ($LASTEXITCODE -ne 0) {
 Write-Host "Cleaning up..."
 Remove-Item -Path $DownloadPath -Force
 Remove-Item -Path $SourceFilePath -Force
+
+# Optionally, remove the folder if empty
+if ((Get-ChildItem -Path $TempFolder -Recurse | Measure-Object).Count -eq 0) {
+    Remove-Item -Path $TempFolder -Force
+}
 
 Write-Host "$TargetExecutable installation completed successfully."
 exit 0
