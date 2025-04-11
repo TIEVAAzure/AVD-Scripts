@@ -1,5 +1,5 @@
 # Define the URL of the remote PowerShell script (use the "raw" URL)
-$scriptUrl = "https://github.com/TIEVAAzure/AVD-Scripts/raw/refs/heads/main/AVD-AIB-TeamsAddIn-Install.ps1"
+$scriptUrl = "https://raw.githubusercontent.com/TIEVAAzure/AVD-Scripts/refs/heads/main/AVD-AIB-TeamsAddIn-Install.ps1"
 
 # Define a local path to save the downloaded script (e.g., in the TEMP folder)
 $scriptPath = "$env:TEMP\downloadedScript.ps1"
