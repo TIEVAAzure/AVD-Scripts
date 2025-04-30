@@ -140,7 +140,7 @@ if ($installedVerObj -lt $onlineVerObj) {
 
     # Poll the registry for a version change (timeout after 10 minutes).
     $maxWaitSeconds = 600
-    $pollInterval = 10
+    $pollInterval = 20
     $elapsed = 0
     $NewVersionStr = $ExistingVersionStr
     while (($NewVersionStr -eq $ExistingVersionStr) -and ($elapsed -lt $maxWaitSeconds)) {
