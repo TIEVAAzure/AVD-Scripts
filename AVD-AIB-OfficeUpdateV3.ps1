@@ -138,8 +138,8 @@ if ($installedVerObj -lt $onlineVerObj) {
     $updateCmdParms = "/Update User displaylevel=false"
     Start-Process -FilePath $updateCmd -ArgumentList $updateCmdParms
 
-    # Poll the registry for a version change (timeout after 10 minutes).
-    $maxWaitSeconds = 600
+    # Poll the registry for a version change (timeout after 15 minutes).
+    $maxWaitSeconds = 900
     $pollInterval = 20
     $elapsed = 0
     $NewVersionStr = $ExistingVersionStr
