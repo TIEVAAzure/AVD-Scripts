@@ -85,17 +85,19 @@ switch ($ErrorState)
             Write-Host "$LogHeader - INFO : "
             Write-host "$logHeader - INFO : Version was -> $ExistingVersion"
             Write-Host "$LogHeader - INFO : Version is  -> $NewVersion"
+
+            exit 0
         }
     1   {
             Write-Host "$LogHeader - ERROR : Installer File ($InstallerName) did not download correctly"
+            exit 1
         }
     2   {
             Write-Host "$Logheader - ERROR : Uninstall never completed"
+            exit 2
         }
     default {
             Write-Host "$LogHeader - ERROR : Something went wrong"
-
+            exit 3
         }
 }
-
-Exit $ErrorState
