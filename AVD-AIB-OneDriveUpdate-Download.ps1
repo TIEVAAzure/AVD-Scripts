@@ -14,7 +14,7 @@ $process = Start-Process -FilePath "powershell.exe" `
                            -Wait -PassThru
 
 # Capture the exit code returned by the script
-$exitCode = $process.ErrorState
+$exitCode = $process.exitcode
 
 # Output the exit code for logging or further use
 Write-Output "Script exited with code: $exitCode"
