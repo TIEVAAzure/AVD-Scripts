@@ -1,31 +1,16 @@
 # ============================================================================
-# AVD Golden Image Script: Remove 7-Zip (ALL install types)
-#
-# Why this exists (AVD context)
-#   - Your image may have 7-Zip installed via:
-#       * MSI (classic Windows Installer)
-#       * EXE (NSIS/Inno uninstaller)
-#       * Microsoft Store / AppX / MSIX (per-user packaged)
-#       * Provisioned AppX (auto-installs for new profiles)
-#       * winget-managed installs (often MSIX-ish)
-#
-# Key AVD behaviours
-#   - Works when run as SYSTEM during image baking (recommended)
-#   - Removes AppX for ALL local profiles + deprovisions so it doesn't return
-#   - Silent by default; no parameters
-#
-# Exit codes
-#   0    = success OR not detected (safe/idempotent for pipelines)
+# AVD Golden Image Script: Remove 7-Zip (ALL install types) - DROP-IN
+#   0    = success OR not detected
 #   3010 = success but reboot required
 # ============================================================================
 
-$ErrorActionPreference = 'SilentlyContinue'
+$ErrorActionPreference = 'Continue'
+$global:LASTEXITCODE = 0
 
 function Log { param([string]$m) Write-Host "[AVD-7Zip-Remove] $m" }
 
 # ---------------------------------------------------------------------------
 # REGISTRY: read uninstall entries from BOTH 32-bit and 64-bit registry views.
-# This avoids false negatives when the script runs in 32-bit PowerShell.
 # ---------------------------------------------------------------------------
 function Get-UninstallEntriesFromRegistry {
     param(
@@ -48,7 +33,6 @@ function Get-UninstallEntriesFromRegistry {
             $displayName = [string]$sk.GetValue("DisplayName")
             if ([string]::IsNullOrWhiteSpace($displayName)) { continue }
 
-            # Very tolerant match: catches "7-Zip", "7 Zip", "7zip", "7-Zip File Manager"
             if ($displayName -match '(?i)\b7[\s\-]?zip\b') {
                 $results += [pscustomobject]@{
                     DisplayName          = $displayName
@@ -68,33 +52,22 @@ function Get-UninstallEntriesFromRegistry {
 
 function Get-7ZipUninstallEntries {
     $all = @()
-
-    # HKLM = machine-wide installs
     $all += Get-UninstallEntriesFromRegistry -Hive LocalMachine -View Registry64
     $all += Get-UninstallEntriesFromRegistry -Hive LocalMachine -View Registry32
-
-    # HKCU = current user installs (may not matter in SYSTEM context, but harmless)
-    $all += Get-UninstallEntriesFromRegistry -Hive CurrentUser -View Registry64
-    $all += Get-UninstallEntriesFromRegistry -Hive CurrentUser -View Registry32
-
-    # De-dupe on common fields
+    $all += Get-UninstallEntriesFromRegistry -Hive CurrentUser  -View Registry64
+    $all += Get-UninstallEntriesFromRegistry -Hive CurrentUser  -View Registry32
     $all | Sort-Object DisplayName, UninstallString, QuietUninstallString -Unique
 }
 
-# ---------------------------------------------------------------------------
-# MSI uninstall: use msiexec product code when available
-# ---------------------------------------------------------------------------
 function Invoke-MSIUninstall {
     param([string]$ProductCode)
 
     Log "MSI uninstall: $ProductCode"
     $p = Start-Process -FilePath "msiexec.exe" -ArgumentList "/x $ProductCode /qn /norestart" -Wait -PassThru
-    $p.ExitCode
+    $global:LASTEXITCODE = $p.ExitCode
+    return $p.ExitCode
 }
 
-# ---------------------------------------------------------------------------
-# EXE uninstall: parse uninstall string and enforce silent switch (/S)
-# ---------------------------------------------------------------------------
 function Invoke-EXEUninstall {
     param([string]$UninstallString)
 
@@ -105,7 +78,6 @@ function Invoke-EXEUninstall {
 
     $s = $UninstallString.Trim()
 
-    # Handle quoted paths: "C:\Path\Uninstall.exe" /S
     if ($s.StartsWith('"')) {
         $second = $s.IndexOf('"', 1)
         if ($second -gt 1) {
@@ -113,7 +85,6 @@ function Invoke-EXEUninstall {
             $args = $s.Substring($second + 1).Trim()
         }
     } else {
-        # Unquoted: C:\Path\Uninstall.exe /S
         $parts = $s.Split(' ', 2)
         $exe = $parts[0]
         if ($parts.Count -gt 1) { $args = $parts[1] }
@@ -124,7 +95,6 @@ function Invoke-EXEUninstall {
         return $null
     }
 
-    # Enforce silent mode for typical 7-Zip uninstallers (NSIS commonly supports /S)
     if ($args -notmatch '(^|\s)/S(\s|$)') {
         $args = ($args, "/S") -join ' '
         $args = $args.Trim()
@@ -132,147 +102,84 @@ function Invoke-EXEUninstall {
 
     Log "EXE uninstall: $exe $args"
     $p = Start-Process -FilePath $exe -ArgumentList $args -Wait -PassThru
-    $p.ExitCode
+    $global:LASTEXITCODE = $p.ExitCode
+    return $p.ExitCode
 }
 
-# ---------------------------------------------------------------------------
-# APPX/MSIX removal:
-#   - Remove for ALL existing profiles (important for AVD images)
-#   - Remove provisioned package so it won't auto-install for new users
-# ---------------------------------------------------------------------------
-function Remove-7ZipAppx_AllProfilesAndProvisioned {
-    $did = $false
+# --- APPX/MSIX removal (keep your original behaviour, but don’t hard-fail) ---
+function Remove-7ZipAppxEverywhere {
+    try {
+        $pkgs = Get-AppxPackage -AllUsers | Where-Object { $_.Name -match '(?i)7zip|7-zip|7zip' }
+        foreach ($p in $pkgs) {
+            Log "Removing AppX (AllUsers): $($p.Name)"
+            Remove-AppxPackage -AllUsers -Package $p.PackageFullName -ErrorAction SilentlyContinue
+        }
 
-    # 1) Remove provisioned packages (preinstalled for new user profiles)
-    $prov = Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue | Where-Object {
-        $_.DisplayName -match '(?i)\b7[\s\-]?zip\b' -or $_.PackageName -match '(?i)\b7[\s\-]?zip\b'
+        $prov = Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -match '(?i)7zip|7-zip|7zip' }
+        foreach ($p in $prov) {
+            Log "Deprovisioning AppX: $($p.DisplayName)"
+            Remove-AppxProvisionedPackage -Online -PackageName $p.PackageName -ErrorAction SilentlyContinue | Out-Null
+        }
+    } catch {
+        Log "AppX cleanup warning: $($_.Exception.Message)"
     }
-
-    foreach ($p in $prov) {
-        Log "AppX deprovision (image-wide): $($p.DisplayName)"
-        Remove-AppxProvisionedPackage -Online -PackageName $p.PackageName -ErrorAction SilentlyContinue | Out-Null
-        $did = $true
-    }
-
-    # 2) Remove installed AppX packages for ALL existing local user profiles
-    # This matters in golden images where a build account may have installed Store apps
-    $allPkgs = Get-AppxPackage -AllUsers -ErrorAction SilentlyContinue | Where-Object {
-        $_.Name -match '(?i)\b7[\s\-]?zip\b' -or $_.PackageFamilyName -match '(?i)\b7[\s\-]?zip\b'
-    }
-
-    foreach ($pkg in $allPkgs) {
-        Log "AppX uninstall (all users): $($pkg.Name)"
-        # Remove-AppxPackage does not accept -AllUsers, so we remove by PackageFullName
-        Remove-AppxPackage -Package $pkg.PackageFullName -ErrorAction SilentlyContinue
-        $did = $true
-    }
-
-    $did
 }
 
-# ---------------------------------------------------------------------------
-# winget uninstall (best-effort):
-# Useful when 7-Zip is installed as a packaged app not easily caught above.
-# ---------------------------------------------------------------------------
-function Remove-7ZipWinget_BestEffort {
-    $did = $false
+try {
+    Log "Starting 7-Zip removal"
+    $foundAnything = $false
+    $rebootNeeded  = $false
 
-    $winget = (Get-Command winget.exe -ErrorAction SilentlyContinue).Source
-    if (-not $winget) { return $false }
+    # 1) Registry-based uninstalls (MSI/EXE)
+    $entries = Get-7ZipUninstallEntries
+    if ($entries.Count -gt 0) {
+        $foundAnything = $true
+        foreach ($e in $entries) {
+            Log "Detected: $($e.DisplayName) ($($e.DisplayVersion)) [$($e.Hive)/$($e.View)]"
 
-    $candidates = @(
-        @{ Type="id";   Value="7zip.7zip" },
-        @{ Type="name"; Value="7-Zip" },
-        @{ Type="name"; Value="7zip" }
-    )
+            $code = $null
 
-    foreach ($c in $candidates) {
-        try {
-            Log "winget uninstall attempt ($($c.Type)=$($c.Value))"
-            $args = @(
-                "uninstall",
-                "--silent",
-                "--accept-source-agreements",
-                "--accept-package-agreements",
-                "--$($c.Type)", $c.Value
-            )
+            # MSI product code sometimes lives in the uninstall key name; attempt to extract {GUID}
+            if ($e.UninstallString -match '\{[0-9A-Fa-f\-]{36}\}') {
+                $productCode = $Matches[0]
+                $code = Invoke-MSIUninstall -ProductCode $productCode
+            }
+            elseif (-not [string]::IsNullOrWhiteSpace($e.QuietUninstallString)) {
+                $code = Invoke-EXEUninstall -UninstallString $e.QuietUninstallString
+            }
+            elseif (-not [string]::IsNullOrWhiteSpace($e.UninstallString)) {
+                $code = Invoke-EXEUninstall -UninstallString $e.UninstallString
+            }
 
-            $p = Start-Process -FilePath $winget -ArgumentList $args -Wait -PassThru -WindowStyle Hidden
-            if ($p.ExitCode -eq 0) { $did = $true }
-        } catch { }
-    }
-
-    $did
-}
-
-# ---------------------------------------------------------------------------
-# Fallback paths:
-# Catches broken/unregistered EXE installs that still dropped an uninstaller on disk.
-# ---------------------------------------------------------------------------
-function Remove-7ZipFallbackPaths {
-    $did = $false
-
-    $fallbacks = @(
-        "$env:ProgramFiles\7-Zip\Uninstall.exe",
-        "$env:ProgramFiles\7-Zip\Uninstall7Zip.exe",
-        "$env:ProgramFiles(x86)\7-Zip\Uninstall.exe",
-        "$env:ProgramFiles(x86)\7-Zip\Uninstall7Zip.exe"
-    ) | Where-Object { $_ -and (Test-Path $_) } | Select-Object -Unique
-
-    foreach ($f in $fallbacks) {
-        Log "Fallback uninstaller found: $f"
-        Invoke-EXEUninstall -UninstallString "`"$f`"" | Out-Null
-        $did = $true
-    }
-
-    $did
-}
-
-# ---------------------------------------------------------------------------
-# MAIN
-# ---------------------------------------------------------------------------
-Log "Starting removal..."
-
-$foundAnything = $false
-$exitCodes = @()
-
-# 1) Classic MSI/EXE installs from registry
-$entries = Get-7ZipUninstallEntries
-foreach ($e in $entries) {
-    $foundAnything = $true
-    Log "Found (registry): $($e.DisplayName) [$($e.Hive) $($e.View)]"
-
-    # Prefer QuietUninstallString (already silent) else UninstallString
-    $u = if ($e.QuietUninstallString) { $e.QuietUninstallString } else { $e.UninstallString }
-
-    # If a ProductCode GUID exists, it’s almost certainly MSI -> use msiexec
-    if ($u -match '\{[0-9A-Fa-f]{8}\-[0-9A-Fa-f]{4}\-[0-9A-Fa-f]{4}\-[0-9A-Fa-f]{4}\-[0-9A-Fa-f]{12}\}') {
-        $exitCodes += Invoke-MSIUninstall -ProductCode $matches[0]
+            if ($code -eq 3010) { $rebootNeeded = $true }
+        }
     } else {
-        $exitCodes += Invoke-EXEUninstall -UninstallString $u
+        Log "No 7-Zip uninstall entries found in registry."
     }
-}
 
-# 2) Store/AppX/MSIX removal (all profiles + deprovision)
-if (Remove-7ZipAppx_AllProfilesAndProvisioned) { $foundAnything = $true }
+    # 2) AppX/MSIX removal for all users + deprovision
+    Remove-7ZipAppxEverywhere
 
-# 3) winget removal (best-effort)
-if (Remove-7ZipWinget_BestEffort) { $foundAnything = $true }
+    if (-not $foundAnything) {
+        Log "7-Zip not detected (safe no-op)."
+        $global:LASTEXITCODE = 0
+        exit 0
+    }
 
-# 4) fallback uninstaller paths
-if (Remove-7ZipFallbackPaths) { $foundAnything = $true }
+    if ($rebootNeeded) {
+        Log "7-Zip removed; reboot required (3010)."
+        $global:LASTEXITCODE = 3010
+        exit 3010
+    }
 
-# Exit handling: idempotent
-if (-not $foundAnything) {
-    Log "7-Zip not detected – nothing to do"
+    Log "7-Zip removed successfully."
+    $global:LASTEXITCODE = 0
     exit 0
 }
-
-# Bubble up “reboot required” if any MSI uninstall requested it
-if ($exitCodes -contains 3010) {
-    Log "Completed – reboot required"
-    exit 3010
+catch {
+    Log "ERROR: $($_.Exception.Message)"
+    # You can choose to fail the image build here by exiting 1,
+    # but defaulting to fail-fast is usually better for golden images.
+    $global:LASTEXITCODE = 1
+    exit 1
 }
-
-Log "Completed"
-exit 0

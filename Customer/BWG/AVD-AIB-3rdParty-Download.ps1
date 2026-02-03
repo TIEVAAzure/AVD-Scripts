@@ -1,20 +1,70 @@
-# Define the URL of the remote PowerShell script (use the "raw" URL)
-$scriptUrl = "https://raw.githubusercontent.com/TIEVAAzure/AVD-Scripts/refs/heads/main/Customer/BWG/AVD-AIB-AppInstalls.ps1"
+# AVD-AIB-3rdParty-Download.ps1 (DROP-IN)
+# Downloads the customer AppInstalls script and executes it in 64-bit PowerShell.
+# Critical: propagates correct exit code to AIB/Packer (no stale $LASTEXITCODE).
 
-# Define a local path to save the downloaded script (e.g., in the TEMP folder)
-$scriptPath = "$env:TEMP\downloadedScript.ps1"
+$ErrorActionPreference = 'Stop'
+$global:LASTEXITCODE = 0
 
-# Download the script from GitHub
-Invoke-WebRequest -Uri $scriptUrl -OutFile $scriptPath
+# Force TLS 1.2 for GitHub raw
+try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}
 
-# Run the downloaded script in a separate PowerShell process
-# Using Start-Process with -Wait and -PassThru lets us capture the exit code.
-$process = Start-Process -FilePath "powershell.exe" `
-                           -ArgumentList "-ExecutionPolicy Bypass -File `"$scriptPath`"" `
-                           -Wait -PassThru
+$scriptUrl = "https://raw.githubusercontent.com/TIEVAAzure/AVD-Scripts/refs/heads/main/Customer/IMS/AVD-AIB-AppInstalls.ps1"
 
-# Capture the exit code returned by the script
-$exitCode = $process.ExitCode
+$logRoot = "C:\Windows\Temp\AIB"
+New-Item -Path $logRoot -ItemType Directory -Force | Out-Null
 
-# Output the exit code for logging or further use
-Write-Output "Script exited with code: $exitCode"
+$scriptPath = Join-Path $logRoot "AVD-AIB-AppInstalls.downloaded.ps1"
+$logPath    = Join-Path $logRoot "AVD-AIB-3rdParty-Download.log"
+
+function Log([string]$m) {
+    $line = "[{0}] {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $m
+    $line | Tee-Object -FilePath $logPath -Append | Out-Null
+}
+
+function Download-WithRetry {
+    param(
+        [Parameter(Mandatory)] [string]$Uri,
+        [Parameter(Mandatory)] [string]$OutFile,
+        [int]$Retries = 3,
+        [int]$DelaySeconds = 3
+    )
+
+    for ($i = 1; $i -le $Retries; $i++) {
+        try {
+            Log "Downloading ($i/$Retries): $Uri -> $OutFile"
+            Invoke-WebRequest -Uri $Uri -OutFile $OutFile -UseBasicParsing
+
+            if (-not (Test-Path $OutFile)) { throw "Downloaded file not found." }
+            if ((Get-Item $OutFile).Length -lt 20) { throw "Downloaded file too small (likely HTML/empty)." }
+
+            Log "Download OK: $OutFile ($((Get-Item $OutFile).Length) bytes)"
+            return
+        } catch {
+            Log "Download failed: $($_.Exception.Message)"
+            if ($i -lt $Retries) { Start-Sleep -Seconds $DelaySeconds } else { throw }
+        }
+    }
+}
+
+try {
+    Log "Starting 3rd-party bootstrap"
+    Download-WithRetry -Uri $scriptUrl -OutFile $scriptPath
+
+    # Always run child in 64-bit PowerShell
+    $ps64 = Join-Path $env:WINDIR "System32\WindowsPowerShell\v1.0\powershell.exe"
+
+    Log "Executing AppInstalls (64-bit): $ps64 -File $scriptPath"
+    & $ps64 -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $scriptPath
+
+    $code = $LASTEXITCODE
+    Log "AppInstalls exit code: $code"
+
+    # Ensure Packer sees the right code
+    $global:LASTEXITCODE = $code
+    exit $code
+}
+catch {
+    Log "FATAL: $($_.Exception.Message)"
+    $global:LASTEXITCODE = 1
+    exit 1
+}
