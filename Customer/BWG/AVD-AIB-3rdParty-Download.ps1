@@ -1,11 +1,7 @@
 # AVD-AIB-3rdParty-Download.ps1 (DROP-IN)
-# Downloads the customer AppInstalls script and executes it in 64-bit PowerShell.
-# Critical: propagates correct exit code to AIB/Packer (no stale $LASTEXITCODE).
-
 $ErrorActionPreference = 'Stop'
 $global:LASTEXITCODE = 0
 
-# Force TLS 1.2 for GitHub raw
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}
 
 $scriptUrl = "https://raw.githubusercontent.com/TIEVAAzure/AVD-Scripts/refs/heads/main/Customer/IMS/AVD-AIB-AppInstalls.ps1"
@@ -21,6 +17,21 @@ function Log([string]$m) {
     $line | Tee-Object -FilePath $logPath -Append | Out-Null
 }
 
+function Assert-ValidPsFile {
+    param([Parameter(Mandatory)][string]$Path)
+
+    if (-not (Test-Path $Path)) { throw "File not found: $Path" }
+    if ((Get-Item $Path).Length -lt 50) { throw "File too small: $Path" }
+
+    $head = Get-Content -Path $Path -TotalCount 5 -ErrorAction SilentlyContinue | Out-String
+    if ($head -match '<!DOCTYPE html' -or $head -match '<html' -or $head -match '404') {
+        throw "Downloaded content looks like HTML/404, not a PowerShell script."
+    }
+
+    # Parser validation – catches unterminated strings/missing braces BEFORE execution
+    $null = [System.Management.Automation.Language.Parser]::ParseFile($Path, [ref]$null, [ref]$null)
+}
+
 function Download-WithRetry {
     param(
         [Parameter(Mandatory)] [string]$Uri,
@@ -34,13 +45,12 @@ function Download-WithRetry {
             Log "Downloading ($i/$Retries): $Uri -> $OutFile"
             Invoke-WebRequest -Uri $Uri -OutFile $OutFile -UseBasicParsing
 
-            if (-not (Test-Path $OutFile)) { throw "Downloaded file not found." }
-            if ((Get-Item $OutFile).Length -lt 20) { throw "Downloaded file too small (likely HTML/empty)." }
-
-            Log "Download OK: $OutFile ($((Get-Item $OutFile).Length) bytes)"
+            Assert-ValidPsFile -Path $OutFile
+            Log "Download OK + parse OK: $OutFile ($((Get-Item $OutFile).Length) bytes)"
             return
-        } catch {
-            Log "Download failed: $($_.Exception.Message)"
+        }
+        catch {
+            Log "Download/validate failed: $($_.Exception.Message)"
             if ($i -lt $Retries) { Start-Sleep -Seconds $DelaySeconds } else { throw }
         }
     }
@@ -50,16 +60,13 @@ try {
     Log "Starting 3rd-party bootstrap"
     Download-WithRetry -Uri $scriptUrl -OutFile $scriptPath
 
-    # Always run child in 64-bit PowerShell
     $ps64 = Join-Path $env:WINDIR "System32\WindowsPowerShell\v1.0\powershell.exe"
-
     Log "Executing AppInstalls (64-bit): $ps64 -File $scriptPath"
+
     & $ps64 -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $scriptPath
 
     $code = $LASTEXITCODE
     Log "AppInstalls exit code: $code"
-
-    # Ensure Packer sees the right code
     $global:LASTEXITCODE = $code
     exit $code
 }

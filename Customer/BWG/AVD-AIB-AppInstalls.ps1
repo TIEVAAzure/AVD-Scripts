@@ -1,7 +1,4 @@
 # Customer-AVD\IMS\AVD-AIB-AppInstalls.ps1 (DROP-IN)
-# Controls which 3rd-party app scripts run during the build.
-# Critical: runs each script in 64-bit PowerShell and returns correct exit code.
-
 $ErrorActionPreference = 'Stop'
 $global:LASTEXITCODE = 0
 
@@ -14,6 +11,20 @@ $logPath = Join-Path $logRoot "AVD-AIB-AppInstalls.log"
 function Log([string]$m) {
     $line = "[{0}] {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $m
     $line | Tee-Object -FilePath $logPath -Append | Out-Null
+}
+
+function Assert-ValidPsFile {
+    param([Parameter(Mandatory)][string]$Path)
+
+    if (-not (Test-Path $Path)) { throw "File not found: $Path" }
+    if ((Get-Item $Path).Length -lt 50) { throw "File too small (likely HTML/empty): $Path" }
+
+    $head = Get-Content -Path $Path -TotalCount 5 -ErrorAction SilentlyContinue | Out-String
+    if ($head -match '<!DOCTYPE html' -or $head -match '<html' -or $head -match '404') {
+        throw "Downloaded content looks like HTML/404, not a PowerShell script."
+    }
+
+    $null = [System.Management.Automation.Language.Parser]::ParseFile($Path, [ref]$null, [ref]$null)
 }
 
 function Download-WithRetry {
@@ -29,10 +40,8 @@ function Download-WithRetry {
             Log "Downloading ($i/$Retries): $Uri -> $OutFile"
             Invoke-WebRequest -Uri $Uri -OutFile $OutFile -UseBasicParsing
 
-            if (-not (Test-Path $OutFile)) { throw "Downloaded file not found." }
-            if ((Get-Item $OutFile).Length -lt 20) { throw "Downloaded file too small (likely HTML/empty)." }
-
-            Log "Download OK: $OutFile ($((Get-Item $OutFile).Length) bytes)"
+            Assert-ValidPsFile -Path $OutFile
+            Log "Download OK + parse OK: $OutFile ($((Get-Item $OutFile).Length) bytes)"
             return
         } catch {
             Log "Download failed: $($_.Exception.Message)"
@@ -41,11 +50,8 @@ function Download-WithRetry {
     }
 }
 
-# Base raw URL to the Applications folder
 $baseUrl = "https://raw.githubusercontent.com/TIEVAAzure/AVD-Scripts/refs/heads/main/Applications"
 
-# List of app script files in the Applications folder
-# (EDIT THIS LIST per customer/image)
 $AppScripts = @(
     "AVD-AIB-7zip-Removal.ps1"
 )
@@ -66,13 +72,11 @@ try {
         Log "Running: $fileName (64-bit)"
         Log "Child log: $childLog"
 
-        # Run directly so $LASTEXITCODE is correct (do NOT Start-Process here)
         & $ps64 -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $scriptPath *>> $childLog
 
         $code = $LASTEXITCODE
         Log "$fileName exit code: $code"
 
-        # 3010 = reboot required (treat as success in image pipelines)
         if ($code -ne 0 -and $code -ne 3010) {
             Log "Stopping – script $fileName failed with exit code $code"
             $global:LASTEXITCODE = $code
