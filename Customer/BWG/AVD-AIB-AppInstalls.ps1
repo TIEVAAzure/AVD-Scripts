@@ -1,4 +1,6 @@
-# Customer-AVD\IMS\AVD-AIB-AppInstalls.ps1 (DROP-IN)
+# Customer/BWG/AVD-AIB-AppInstalls.ps1
+# Controls which 3rd-party app scripts run during the build.
+
 $ErrorActionPreference = 'Stop'
 $global:LASTEXITCODE = 0
 
@@ -19,7 +21,8 @@ function Assert-ValidPsFile {
     if (-not (Test-Path $Path)) { throw "File not found: $Path" }
     if ((Get-Item $Path).Length -lt 50) { throw "File too small (likely HTML/empty): $Path" }
 
-    $head = Get-Content -Path $Path -TotalCount 5 -ErrorAction SilentlyContinue | Out-String
+    $head = (Get-Content -Path $Path -TotalCount 5 -ErrorAction SilentlyContinue | Out-String)
+
     if ($head -match '<!DOCTYPE html' -or $head -match '<html' -or $head -match '404') {
         throw "Downloaded content looks like HTML/404, not a PowerShell script."
     }
