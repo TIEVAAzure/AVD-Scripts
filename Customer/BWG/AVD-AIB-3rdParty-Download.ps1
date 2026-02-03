@@ -1,4 +1,4 @@
-# AVD-AIB-3rdParty-Download.ps1 (DROP-IN)
+# Customer/BWG/AVD-AIB-3rdParty-Download.ps1
 $ErrorActionPreference = 'Stop'
 $global:LASTEXITCODE = 0
 
@@ -23,12 +23,13 @@ function Assert-ValidPsFile {
     if (-not (Test-Path $Path)) { throw "File not found: $Path" }
     if ((Get-Item $Path).Length -lt 50) { throw "File too small: $Path" }
 
-    $head = Get-Content -Path $Path -TotalCount 5 -ErrorAction SilentlyContinue | Out-String
+    $head = (Get-Content -Path $Path -TotalCount 5 -ErrorAction SilentlyContinue | Out-String)
+
     if ($head -match '<!DOCTYPE html' -or $head -match '<html' -or $head -match '404') {
         throw "Downloaded content looks like HTML/404, not a PowerShell script."
     }
 
-    # Parser validation – catches unterminated strings/missing braces BEFORE execution
+    # Parse validation – catches unterminated strings/missing braces BEFORE execution
     $null = [System.Management.Automation.Language.Parser]::ParseFile($Path, [ref]$null, [ref]$null)
 }
 
