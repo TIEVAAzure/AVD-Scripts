@@ -47,9 +47,7 @@ $baseUrl = "https://raw.githubusercontent.com/TIEVAAzure/AVD-Scripts/refs/heads/
 # List of app script files in the Applications folder
 # (EDIT THIS LIST per customer/image)
 $AppScripts = @(
-    "AVD-AIB-8x8-Update.ps1"
-    "AVD-AIB-AdobeReaderDC-Update.ps1"
-    # "AVD-AIB-7zip-Removal.ps1"   # <- add here if/when you want it in this run
+    "AVD-AIB-7zip-Removal.ps1"
 )
 
 $ps64 = Join-Path $env:WINDIR "System32\WindowsPowerShell\v1.0\powershell.exe"
