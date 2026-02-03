@@ -4,7 +4,7 @@ $global:LASTEXITCODE = 0
 
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}
 
-$scriptUrl = "https://raw.githubusercontent.com/TIEVAAzure/AVD-Scripts/refs/heads/main/Customer/IMS/AVD-AIB-AppInstalls.ps1"
+$scriptUrl = "https://raw.githubusercontent.com/TIEVAAzure/AVD-Scripts/refs/heads/main/Customer/BWG/AVD-AIB-AppInstalls.ps1"
 
 $logRoot = "C:\Windows\Temp\AIB"
 New-Item -Path $logRoot -ItemType Directory -Force | Out-Null
