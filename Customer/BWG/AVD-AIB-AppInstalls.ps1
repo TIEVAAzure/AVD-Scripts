@@ -12,7 +12,7 @@ $baseUrl = "https://raw.githubusercontent.com/TIEVAAzure/AVD-Scripts/refs/heads/
 
 # List of app script files in the Applications folder
 $AppScripts = @(
-    "AVD-AIB-8x8-Update.ps1"
+    "AVD-AIB-7zip-Removal.ps1"
 )
 
 # Build full URLs from the base + file names
