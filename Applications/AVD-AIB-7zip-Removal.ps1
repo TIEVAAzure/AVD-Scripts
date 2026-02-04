@@ -1,134 +1,109 @@
-# AVD-AIB-7zip-Removal.ps1 (DROP-IN)
+<# 
+.SYNOPSIS
+    Removes 7-Zip if installed (MSI, EXE, AppX/MSIX).
+
+.DESCRIPTION
+    - exit 0 = success OR not installed
+    - exit 1 = failure
+    - Designed for AVD AIB / Packer (explicit LASTEXITCODE control)
+#>
+
+param()
+
 $ErrorActionPreference = 'Continue'
 $global:LASTEXITCODE = 0
+$global:LastExitCode  = 0
 
-function Log([string]$m) { Write-Host "[AVD-7Zip-Removal] $m" }
+try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}
 
-function Get-UninstallEntries {
+# ------------------------------------------------------------------
+function Get-7ZipInstall {
     $paths = @(
         "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
-        "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*",
-        "HKCU:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*"
+        "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
     )
 
-    $items = foreach ($p in $paths) {
-        Get-ItemProperty -Path $p -ErrorAction SilentlyContinue
-    }
-
-    $items | Where-Object {
-        $_.DisplayName -match '(?i)\b7[\s\-]?zip\b'
-    } | Sort-Object DisplayName -Unique
+    Get-ItemProperty $paths -ErrorAction SilentlyContinue |
+        Where-Object { $_.DisplayName -match '(?i)\b7[\s\-]?zip\b' } |
+        Select-Object -First 1
 }
 
-function Run-MsiUninstall([string]$productCode) {
-    Log "MSI uninstall: $productCode"
-    $p = Start-Process -FilePath "msiexec.exe" -ArgumentList "/x $productCode /qn /norestart" -Wait -PassThru
+function Uninstall-RegistryApp {
+    param([Parameter(Mandatory)] $App)
+
+    $uninstall = $App.QuietUninstallString
+    if (-not $uninstall) { $uninstall = $App.UninstallString }
+
+    if (-not $uninstall) {
+        Write-Host "No uninstall string found for $($App.DisplayName)"
+        return 0
+    }
+
+    # MSI uninstall
+    if ($uninstall -match "{[0-9A-Fa-f-]+}") {
+        $guid = $matches[0]
+        Write-Host "Uninstalling 7-Zip via MSI ($guid)"
+        $p = Start-Process "msiexec.exe" -ArgumentList "/x $guid /qn /norestart" -Wait -PassThru
+        $global:LASTEXITCODE = $p.ExitCode
+        $global:LastExitCode  = $p.ExitCode
+        return $p.ExitCode
+    }
+
+    # EXE / command uninstall
+    Write-Host "Uninstalling 7-Zip via uninstall command"
+    $p = Start-Process "cmd.exe" -ArgumentList "/c $uninstall" -Wait -PassThru
     $global:LASTEXITCODE = $p.ExitCode
+    $global:LastExitCode  = $p.ExitCode
     return $p.ExitCode
 }
 
-function Run-ExeUninstall([string]$cmd) {
-    if ([string]::IsNullOrWhiteSpace($cmd)) { return $null }
-
-    $exe = $null
-    $args = ""
-
-    $s = $cmd.Trim()
-    if ($s.StartsWith('"')) {
-        $second = $s.IndexOf('"', 1)
-        if ($second -gt 1) {
-            $exe  = $s.Substring(1, $second - 1)
-            $args = $s.Substring($second + 1).Trim()
-        }
-    } else {
-        $parts = $s.Split(' ', 2)
-        $exe = $parts[0]
-        if ($parts.Count -gt 1) { $args = $parts[1] }
-    }
-
-    if (-not $exe -or -not (Test-Path $exe)) {
-        Log "EXE uninstaller not found: $exe"
-        return $null
-    }
-
-    # Best-effort silent flag
-    if ($args -notmatch '(^|\s)/S(\s|$)') {
-        $args = ($args, "/S") -join ' '
-        $args = $args.Trim()
-    }
-
-    Log "EXE uninstall: $exe $args"
-    $p = Start-Process -FilePath $exe -ArgumentList $args -Wait -PassThru
-    $global:LASTEXITCODE = $p.ExitCode
-    return $p.ExitCode
-}
-
-function Remove-Appx7Zip {
+function Remove-7ZipAppx {
     try {
-        $pkgs = Get-AppxPackage -AllUsers | Where-Object { $_.Name -match '(?i)7zip|7-zip' }
-        foreach ($p in $pkgs) {
-            Log "Removing AppX (AllUsers): $($p.Name)"
-            Remove-AppxPackage -AllUsers -Package $p.PackageFullName -ErrorAction SilentlyContinue
-        }
-
-        $prov = Get-AppxProvisionedPackage -Online | Where-Object { $_.DisplayName -match '(?i)7zip|7-zip' }
-        foreach ($p in $prov) {
-            Log "Deprovisioning AppX: $($p.DisplayName)"
-            Remove-AppxProvisionedPackage -Online -PackageName $p.PackageName -ErrorAction SilentlyContinue | Out-Null
-        }
-    } catch {
-        Log "AppX cleanup warning: $($_.Exception.Message)"
-    }
-}
-
-try {
-    Log "Starting 7-Zip removal"
-
-    $found  = $false
-    $reboot = $false
-
-    $entries = Get-UninstallEntries
-    if ($entries) {
-        $found = $true
-        foreach ($e in $entries) {
-            Log "Detected: $($e.DisplayName) $($e.DisplayVersion)"
-
-            $uninstall = $e.QuietUninstallString
-            if ([string]::IsNullOrWhiteSpace($uninstall)) { $uninstall = $e.UninstallString }
-
-            $code = $null
-            if ($uninstall -match '\{[0-9A-Fa-f\-]{36}\}') {
-                $code = Run-MsiUninstall -productCode $Matches[0]
-            } else {
-                $code = Run-ExeUninstall -cmd $uninstall
+        Get-AppxPackage -AllUsers -ErrorAction SilentlyContinue |
+            Where-Object { $_.Name -match '(?i)7zip|7-zip' } |
+            ForEach-Object {
+                Write-Host "Removing AppX package: $($_.Name)"
+                Remove-AppxPackage -AllUsers -Package $_.PackageFullName -ErrorAction SilentlyContinue
             }
 
-            if ($code -eq 3010) { $reboot = $true }
-        }
-    } else {
-        Log "No 7-Zip uninstall entries found."
+        Get-AppxProvisionedPackage -Online -ErrorAction SilentlyContinue |
+            Where-Object { $_.DisplayName -match '(?i)7zip|7-zip' } |
+            ForEach-Object {
+                Write-Host "Deprovisioning AppX package: $($_.DisplayName)"
+                Remove-AppxProvisionedPackage -Online -PackageName $_.PackageName -ErrorAction SilentlyContinue | Out-Null
+            }
     }
-
-    Remove-Appx7Zip
-
-    if (-not $found) {
-        Log "7-Zip not detected (no-op)."
-        $global:LASTEXITCODE = 0
-        exit 0
+    catch {
+        Write-Host "Warning during AppX cleanup: $($_.Exception.Message)"
     }
-
-    if ($reboot) {
-        Log "7-Zip removed; reboot required (3010)."
-        $global:LASTEXITCODE = 3010
-        exit 3010
-    }
-
-    Log "7-Zip removed successfully."
-    $global:LASTEXITCODE = 0
-    exit 0
 }
-catch {
-    Log "ERROR: $($_.Exception.Message)"
-    $global:LASTEXITCODE = 1
-    exit 1
+
+# ------------------------------------------------------------------
+# MAIN
+# ------------------------------------------------------------------
+Write-Host "Checking for installed 7-Zip..."
+
+$existing = Get-7ZipInstall
+
+if ($existing) {
+    Write-Host "Found 7-Zip: $($existing.DisplayName) $($existing.DisplayVersion)"
+    $code = Uninstall-RegistryApp -App $existing
+
+    if ($code -ne 0) {
+        Write-Host "7-Zip uninstall failed with exit code $code"
+        $global:LASTEXITCODE = 1
+        $global:LastExitCode  = 1
+        exit 1
+    }
 }
+else {
+    Write-Host "7-Zip not installed."
+}
+
+# Always attempt AppX/MSIX cleanup as well
+Remove-7ZipAppx
+
+Write-Host "7-Zip removal completed successfully."
+$global:LASTEXITCODE = 0
+$global:LastExitCode  = 0
+exit 0
