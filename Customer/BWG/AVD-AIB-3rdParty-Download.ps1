@@ -54,12 +54,12 @@ try {
     Download-WithRetry -Uri $appInstallsUrl -OutFile $localPath
 
     $ps64 = Join-Path $env:WINDIR "System32\WindowsPowerShell\v1.0\powershell.exe"
-    Log "Executing AppInstalls (64-bit): $localPath"
+    Log "Executing App uninstalls (64-bit): $localPath"
 
     & $ps64 -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $localPath
     $code = $LASTEXITCODE
 
-    Log "AppInstalls exit code: $code"
+    Log "AppUninstalls exit code: $code"
 
     if ($code -ne 0) {
         Write-Host "Third-party app uninstalls failed."
