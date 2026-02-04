@@ -48,7 +48,7 @@ function Download-WithRetry {
 
 try {
     # Set your customer path here
-    $appInstallsUrl = "https://raw.githubusercontent.com/TIEVAAzure/AVD-Scripts/refs/heads/main/Customer/BWG/AVD-AIB-AppInstalls.ps1"
+    $appInstallsUrl = "https://raw.githubusercontent.com/TIEVAAzure/AVD-Scripts/main/Customer/BWG/AVD-AIB-AppInstalls.ps1?ts=$(Get-Date -Format yyyyMMddHHmmss)"
 
     $localPath = Join-Path $logRoot "AVD-AIB-AppInstalls.downloaded.ps1"
     Download-WithRetry -Uri $appInstallsUrl -OutFile $localPath
@@ -67,13 +67,13 @@ try {
         exit 1
     }
 
-    Write-Host "Third-party app installs completed successfully."
+    Write-Host "Third-party app uninstalls completed successfully."
     $global:LASTEXITCODE = 0
     exit 0
 }
 catch {
     Log "ERROR: $($_.Exception.Message)"
-    Write-Host "Third-party app installs failed."
+    Write-Host "Third-party app uninstalls failed."
     $global:LASTEXITCODE = 1
     exit 1
 }

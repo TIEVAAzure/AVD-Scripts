@@ -85,13 +85,13 @@ try {
     }
 
     Log "All third-party scripts completed OK"
-    Write-Host "App installs completed successfully."
+    Write-Host "App uninstalls completed successfully."
     $global:LASTEXITCODE = 0
     exit 0
 }
 catch {
     Log "ERROR: $($_.Exception.Message)"
-    Write-Host "App installs failed."
+    Write-Host "App uninstalls failed."
     $global:LASTEXITCODE = 1
     exit 1
 }
