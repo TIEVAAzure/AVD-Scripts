@@ -1,35 +1,19 @@
 # AVD-AIB-3rdParty-Download.ps1 (DROP-IN)
+# Downloads and executes AppInstalls for this customer/image.
+# exit 0 = pass, exit 1 = fail
+
 $ErrorActionPreference = 'Stop'
 $global:LASTEXITCODE = 0
 
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}
 
-$scriptUrl = "https://raw.githubusercontent.com/TIEVAAzure/AVD-Scripts/refs/heads/main/Customer/BWG/AVD-AIB-AppInstalls.ps1"
-
 $logRoot = "C:\Windows\Temp\AIB"
 New-Item -Path $logRoot -ItemType Directory -Force | Out-Null
-
-$scriptPath = Join-Path $logRoot "AVD-AIB-AppInstalls.downloaded.ps1"
-$logPath    = Join-Path $logRoot "AVD-AIB-3rdParty-Download.log"
+$logPath = Join-Path $logRoot "AVD-AIB-3rdParty-Download.log"
 
 function Log([string]$m) {
     $line = "[{0}] {1}" -f (Get-Date -Format "yyyy-MM-dd HH:mm:ss"), $m
     $line | Tee-Object -FilePath $logPath -Append | Out-Null
-}
-
-function Assert-ValidPsFile {
-    param([Parameter(Mandatory)][string]$Path)
-
-    if (-not (Test-Path $Path)) { throw "File not found: $Path" }
-    if ((Get-Item $Path).Length -lt 50) { throw "File too small: $Path" }
-
-    $head = Get-Content -Path $Path -TotalCount 5 -ErrorAction SilentlyContinue | Out-String
-    if ($head -match '<!DOCTYPE html' -or $head -match '<html' -or $head -match '404') {
-        throw "Downloaded content looks like HTML/404, not a PowerShell script."
-    }
-
-    # Parser validation – catches unterminated strings/missing braces BEFORE execution
-    $null = [System.Management.Automation.Language.Parser]::ParseFile($Path, [ref]$null, [ref]$null)
 }
 
 function Download-WithRetry {
@@ -45,33 +29,51 @@ function Download-WithRetry {
             Log "Downloading ($i/$Retries): $Uri -> $OutFile"
             Invoke-WebRequest -Uri $Uri -OutFile $OutFile -UseBasicParsing
 
-            Assert-ValidPsFile -Path $OutFile
-            Log "Download OK + parse OK: $OutFile ($((Get-Item $OutFile).Length) bytes)"
+            if (-not (Test-Path $OutFile)) { throw "Downloaded file not found." }
+            if ((Get-Item $OutFile).Length -lt 50) { throw "Downloaded file too small (likely HTML/empty)." }
+
+            $head = (Get-Content -Path $OutFile -TotalCount 5 | Out-String)
+            if ($head -match '<html' -or $head -match '<!DOCTYPE' -or $head -match 'Not Found') {
+                throw "Downloaded content looks like HTML/404."
+            }
+
+            Log "Download OK: $OutFile ($((Get-Item $OutFile).Length) bytes)"
             return
-        }
-        catch {
-            Log "Download/validate failed: $($_.Exception.Message)"
+        } catch {
+            Log "Download failed: $($_.Exception.Message)"
             if ($i -lt $Retries) { Start-Sleep -Seconds $DelaySeconds } else { throw }
         }
     }
 }
 
 try {
-    Log "Starting 3rd-party bootstrap"
-    Download-WithRetry -Uri $scriptUrl -OutFile $scriptPath
+    # Set your customer path here
+    $appInstallsUrl = "https://raw.githubusercontent.com/TIEVAAzure/AVD-Scripts/refs/heads/main/Customer/BWG/AVD-AIB-AppInstalls.ps1"
+
+    $localPath = Join-Path $logRoot "AVD-AIB-AppInstalls.downloaded.ps1"
+    Download-WithRetry -Uri $appInstallsUrl -OutFile $localPath
 
     $ps64 = Join-Path $env:WINDIR "System32\WindowsPowerShell\v1.0\powershell.exe"
-    Log "Executing AppInstalls (64-bit): $ps64 -File $scriptPath"
+    Log "Executing AppInstalls (64-bit): $localPath"
 
-    & $ps64 -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $scriptPath
-
+    & $ps64 -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $localPath
     $code = $LASTEXITCODE
+
     Log "AppInstalls exit code: $code"
-    $global:LASTEXITCODE = $code
-    exit $code
+
+    if ($code -ne 0) {
+        Write-Host "Third-party app installs failed."
+        $global:LASTEXITCODE = 1
+        exit 1
+    }
+
+    Write-Host "Third-party app installs completed successfully."
+    $global:LASTEXITCODE = 0
+    exit 0
 }
 catch {
-    Log "FATAL: $($_.Exception.Message)"
+    Log "ERROR: $($_.Exception.Message)"
+    Write-Host "Third-party app installs failed."
     $global:LASTEXITCODE = 1
     exit 1
 }
