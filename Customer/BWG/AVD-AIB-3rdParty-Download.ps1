@@ -62,7 +62,7 @@ try {
     Log "AppInstalls exit code: $code"
 
     if ($code -ne 0) {
-        Write-Host "Third-party app installs failed."
+        Write-Host "Third-party app uninstalls failed."
         $global:LASTEXITCODE = 1
         exit 1
     }

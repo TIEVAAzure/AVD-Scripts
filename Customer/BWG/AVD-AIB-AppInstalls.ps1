@@ -78,7 +78,7 @@ try {
 
         if ($code -ne 0) {
             Log "Stopping - $fileName failed with exit code $code"
-            Write-Host "App installs failed."
+            Write-Host "App uninstalls failed."
             $global:LASTEXITCODE = 1
             exit 1
         }
