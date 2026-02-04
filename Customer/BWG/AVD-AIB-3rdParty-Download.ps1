@@ -59,21 +59,21 @@ try {
     & $ps64 -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $localPath
     $code = $LASTEXITCODE
 
-    Log "AppUninstalls exit code: $code"
+    Log "App Script exit code: $code"
 
     if ($code -ne 0) {
-        Write-Host "Third-party app uninstalls failed."
+        Write-Host "Third-party app script failed."
         $global:LASTEXITCODE = 1
         exit 1
     }
 
-    Write-Host "Third-party app uninstalls completed successfully."
+    Write-Host "Third-party app script completed successfully."
     $global:LASTEXITCODE = 0
     exit 0
 }
 catch {
     Log "ERROR: $($_.Exception.Message)"
-    Write-Host "Third-party app uninstalls failed."
+    Write-Host "Third-party app script failed."
     $global:LASTEXITCODE = 1
     exit 1
 }

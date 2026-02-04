@@ -58,7 +58,7 @@ $AppScripts = @(
 $ps64 = Join-Path $env:WINDIR "System32\WindowsPowerShell\v1.0\powershell.exe"
 
 try {
-    Log "Starting AppInstalls"
+    Log "Starting App scripts"
     Log ("App scripts: " + ($AppScripts -join ", "))
 
     foreach ($fileName in $AppScripts) {
@@ -78,20 +78,20 @@ try {
 
         if ($code -ne 0) {
             Log "Stopping - $fileName failed with exit code $code"
-            Write-Host "App uninstalls failed."
+            Write-Host "App scripts failed."
             $global:LASTEXITCODE = 1
             exit 1
         }
     }
 
     Log "All third-party scripts completed OK"
-    Write-Host "App uninstalls completed successfully."
+    Write-Host "App scripts completed successfully."
     $global:LASTEXITCODE = 0
     exit 0
 }
 catch {
     Log "ERROR: $($_.Exception.Message)"
-    Write-Host "App uninstalls failed."
+    Write-Host "App scripts failed."
     $global:LASTEXITCODE = 1
     exit 1
 }
