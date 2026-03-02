@@ -1,39 +1,43 @@
-<# 
-.SYNOPSIS
-    Installs / upgrades Adobe Acrobat Reader DC (64-bit MUI) only if the installed version is older.
+<# =================================================================================================
+AVD-AIB-AdobeReaderDC-Update.ps1
+---------------------------------------------------------------------------------------------------
+PURPOSE
+  Installs / upgrades Adobe Acrobat Reader DC (64-bit MUI) only if the installed version is older.
 
-.DESCRIPTION
-    - Detects existing Reader / Acrobat unified installer entries in HKLM\Uninstall registry
-    - Compares installed version to specified target version
-    - Uninstalls old version if required
-    - Installs Adobe Reader silently from offline package URL
-    - Intended for AVD golden image automation
-#>
+WHY THIS EXISTS
+  - Golden images often need a known Adobe baseline for app compatibility and security.
+  - Adobe offline installer URLs are version-specific, so we compare installed version to TargetVersion.
+
+LOGGING
+  - This script writes output to STDOUT (captured by AppInstalls into a child log + Packer console)
+
+EXIT CODES (CONTRACT)
+  0    = success
+  1    = fail
+  3010 = reboot required (treated as success by the orchestrator)
+================================================================================================= #>
 
 param(
-    # Target version for comparison
+    # Target version to compare against (update these during image cycles)
     [string]$TargetVersion = "2025.001.20937",
 
-    # Direct offline EXE URL (unique per Adobe build) This will need changing when doing image update as the URL is hard coded.
+    # Direct offline EXE URL (update this during image cycles)
     [string]$DownloadUrl = "https://ardownload2.adobe.com/pub/adobe/acrobat/win/AcrobatDC/2500120937/AcroRdrDCx642500120937_MUI.exe"
 )
 
-# Store installer in TEMP folder using version naming to avoid overwrite conflicts
-$InstallerPath = "$env:TEMP\AcroRdrDCx64_$($TargetVersion).exe"
-
-# Force TLS 1.2 support for secure downloads on older hosts
+$ErrorActionPreference = 'Stop'
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}
 
-# ------------------------------------------------------------------------------------------------
-# Helper function: detect installed Adobe Reader instance
-# ------------------------------------------------------------------------------------------------
+# Where we stage the installer
+$InstallerPath = "$env:TEMP\AcroRdrDCx64_$($TargetVersion).exe"
+
 function Get-AdobeReaderInstall {
+    # Search both 64-bit and WOW6432Node uninstall trees
     $paths = @(
         "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
         "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
     )
-    
-    # Match typical Adobe Reader DC 64-bit naming variants
+
     Get-ItemProperty $paths -ErrorAction SilentlyContinue |
         Where-Object {
             $_.DisplayName -like "Adobe Acrobat Reader*64-bit*" -or
@@ -43,11 +47,8 @@ function Get-AdobeReaderInstall {
         Select-Object -First 1
 }
 
-# ------------------------------------------------------------------------------------------------
-# Helper function: uninstall using MSI GUID or fallback method
-# ------------------------------------------------------------------------------------------------
 function Uninstall-RegistryApp {
-    param([Parameter(Mandatory = $true)] $App)
+    param([Parameter(Mandatory)] $App)
 
     $uninstall = $App.UninstallString
     if (-not $uninstall) {
@@ -55,64 +56,63 @@ function Uninstall-RegistryApp {
         return
     }
 
-    # Detect MSI product code and uninstall cleanly if possible
+    # If MSI GUID present, use msiexec /x
     if ($uninstall -match "{[0-9A-Fa-f-]+}") {
         $guid = $matches[0]
         Write-Host "Uninstalling via MSI: $guid"
-        Start-Process "msiexec.exe" -ArgumentList "/x $guid /qn /norestart" -Wait
+        $p = Start-Process "msiexec.exe" -ArgumentList "/x $guid /qn /norestart" -Wait -PassThru
+        if ($p.ExitCode -ne 0 -and $p.ExitCode -ne 3010) { throw "MSI uninstall failed with exit code $($p.ExitCode)" }
     }
     else {
-        # Fallback for EXE-based uninstallers
-        $cmd = "$uninstall /quiet /norestart"
+        # Fallback: execute uninstall string via cmd.exe
         Write-Host "Uninstalling via command string"
-        Start-Process "cmd.exe" -ArgumentList "/c $cmd" -Wait
+        $cmd = "$uninstall /quiet /norestart"
+        $p = Start-Process "cmd.exe" -ArgumentList "/c $cmd" -Wait -PassThru
+        if ($p.ExitCode -ne 0 -and $p.ExitCode -ne 3010) { throw "EXE uninstall failed with exit code $($p.ExitCode)" }
     }
 }
 
-# ------------------------------------------------------------------------------------------------
-# MAIN EXECUTION - Uninstall if older than target version
-# ------------------------------------------------------------------------------------------------
-Write-Host "Checking installed Adobe Reader / Acrobat version..."
+try {
+    Write-Host "Checking installed Adobe Reader / Acrobat version..."
 
-$existing = Get-AdobeReaderInstall
-$targetVer = [version]$TargetVersion
+    $existing  = Get-AdobeReaderInstall
+    $targetVer = [version]$TargetVersion
 
-if ($existing) {
-    $installedVer = [version]($existing.DisplayVersion -replace "[^0-9\.]", "")
-    Write-Host "Installed version: $installedVer"
+    if ($existing) {
+        $installedVer = [version]($existing.DisplayVersion -replace "[^0-9\.]", "")
+        Write-Host "Installed version: $installedVer"
 
-    if ($installedVer -ge $targetVer) {
-        Write-Host "Installed version is up to date. No action required."
-        return
+        if ($installedVer -ge $targetVer) {
+            Write-Host "Installed version is up to date. No action required."
+            Write-Host "Adobe Reader update completed successfully."
+            exit 0
+        }
+
+        Write-Host "Installed version is older. Uninstalling..."
+        Uninstall-RegistryApp -App $existing
+    }
+    else {
+        Write-Host "No existing Adobe Reader found."
     }
 
-    Write-Host "Installed version is older. Uninstalling..."
-    Uninstall-RegistryApp -App $existing
+    if (Test-Path $InstallerPath) { Remove-Item $InstallerPath -Force -ErrorAction SilentlyContinue }
+
+    Write-Host "Downloading offline Adobe Reader installer..."
+    Invoke-WebRequest -Uri $DownloadUrl -OutFile $InstallerPath -UseBasicParsing
+
+    $size = (Get-Item $InstallerPath).Length
+    if ($size -lt 50000000) { throw "Installer too small (likely corrupted). Size=$size" }
+
+    Write-Host "Installing Adobe Reader silently..."
+    $p = Start-Process -FilePath $InstallerPath -ArgumentList "/sAll /rs /rps /msi /norestart /quiet" -Wait -PassThru
+    if ($p.ExitCode -ne 0 -and $p.ExitCode -ne 3010) { throw "Installer failed with exit code $($p.ExitCode)" }
+
+    Remove-Item $InstallerPath -Force -ErrorAction SilentlyContinue
+
+    Write-Host "Adobe Reader update completed successfully."
+    exit 0
 }
-else {
-    Write-Host "No existing Adobe Reader found."
-}
-
-# ------------------------------------------------------------------------------------------------
-# Download + Install update
-# ------------------------------------------------------------------------------------------------
-
-# Clean any old installer file
-if (Test-Path $InstallerPath) { Remove-Item $InstallerPath -Force -ErrorAction SilentlyContinue }
-
-Write-Host "Downloading offline Adobe Reader installer..."
-Invoke-WebRequest -Uri $DownloadUrl -OutFile $InstallerPath -UseBasicParsing
-
-# Basic size validation to detect corrupt download
-$size = (Get-Item $InstallerPath).Length
-if ($size -lt 50000000) {
-    Write-Host "Installer too small (likely corrupted). Aborting."
+catch {
+    Write-Host "Adobe Reader update failed: $($_.Exception.Message)"
     exit 1
 }
-
-Write-Host "Installing Adobe Reader silently..."
-Start-Process -FilePath $InstallerPath -ArgumentList "/sAll /rs /rps /msi /norestart /quiet" -Wait
-
-Remove-Item $InstallerPath -Force -ErrorAction SilentlyContinue
-
-Write-Host "Adobe Reader update completed successfully."

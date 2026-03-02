@@ -1,6 +1,31 @@
-# AVD-AIB-AppInstalls.ps1 (DROP-IN)
-# Runs selected third-party app scripts during AIB build.
-# exit 0 = pass, exit 1 = fail
+# ==================================================================================================
+# AVD-AIB-AppInstalls.ps1
+# --------------------------------------------------------------------------------------------------
+# PURPOSE
+#   Customer-specific orchestrator that runs one or more app scripts from /Applications.
+#
+# WHERE IT LIVES
+#   /Customer/<CUSTOMER>/AVD-AIB-AppInstalls.ps1
+#
+# WHAT IT DOES
+#   1) Downloads each named script from /Applications (raw GitHub URL)
+#   2) Saves it into C:\Windows\Temp\AIB\<ScriptName>.ps1
+#   3) Executes each script in 64-bit PowerShell
+#   4) Stops at first failure
+#
+# PACKER/AIB VISIBILITY (IMPORTANT)
+#   - This script prints ">>> Running app script: <name>" to console so Packer logs show progress.
+#   - Each child script output is teed to both console and its own child log.
+#
+# LOGGING
+#   - Orchestrator log: C:\Windows\Temp\AIB\AVD-AIB-AppInstalls.log
+#   - Child logs:       C:\Windows\Temp\AIB\<ScriptName>.log
+#
+# EXIT CODES (CONTRACT)
+#   0    = success
+#   1    = failure
+#   3010 = reboot required (treated as success by this orchestrator)
+# ==================================================================================================
 
 $ErrorActionPreference = 'Stop'
 $global:LASTEXITCODE = 0
@@ -47,36 +72,57 @@ function Download-WithRetry {
     }
 }
 
-# Raw base URL to Applications folder
+# Shared Applications folder (NOT customer-specific)
 $baseUrl = "https://raw.githubusercontent.com/TIEVAAzure/AVD-Scripts/main/Applications"
 
-# Edit per image/customer
+# --------------------------------------------------------------------------------------------------
+# EDIT THIS LIST PER CUSTOMER / IMAGE
+# Keep these script names in sync with /Applications
+# --------------------------------------------------------------------------------------------------
 $AppScripts = @(
     "AVD-AIB-7zip-Removal.ps1"
+    # "AVD-AIB-AdobeReaderDC-Update.ps1"
+    # "AVD-AIB-8x8-Update.ps1"
 )
 
+# Always run child scripts using 64-bit PowerShell
 $ps64 = Join-Path $env:WINDIR "System32\WindowsPowerShell\v1.0\powershell.exe"
 
 try {
-    Log "Starting App scripts"
-    Log ("App scripts: " + ($AppScripts -join ", "))
+    Log "Starting App scripts orchestrator"
+    Log ("App scripts list: " + ($AppScripts -join ", "))
 
     foreach ($fileName in $AppScripts) {
         $scriptUrl  = "$baseUrl/$fileName"
         $scriptPath = Join-Path $logRoot $fileName
         $childLog   = Join-Path $logRoot ("{0}.log" -f $fileName)
 
+        # Download the child script fresh each run
         Download-WithRetry -Uri $scriptUrl -OutFile $scriptPath
+
+        # Packer-visible header (so you can see what’s running)
+        Write-Host ""
+        Write-Host "============================================================"
+        Write-Host ">>> Running app script: $fileName"
+        Write-Host ">>> Child log: $childLog"
+        Write-Host "============================================================"
+        Write-Host ""
 
         Log "Running: $fileName (64-bit)"
         Log "Child log: $childLog"
 
-        & $ps64 -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $scriptPath *>> $childLog
+        # Capture child output once and tee it to:
+        #   - console (Packer)
+        #   - child log file
+        $output = & $ps64 -NoProfile -NonInteractive -ExecutionPolicy Bypass -File $scriptPath 2>&1
         $code = $LASTEXITCODE
 
-        Log "$fileName exit code: $code"
+        $output | Tee-Object -FilePath $childLog -Append | Out-Null
 
-        if ($code -ne 0) {
+        Log "$fileName exit code: $code"
+        Write-Host ">>> $fileName exit code: $code"
+
+        if ($code -ne 0 -and $code -ne 3010) {
             Log "Stopping - $fileName failed with exit code $code"
             Write-Host "App scripts failed."
             $global:LASTEXITCODE = 1
@@ -84,7 +130,7 @@ try {
         }
     }
 
-    Log "All third-party scripts completed OK"
+    Log "All application scripts completed OK"
     Write-Host "App scripts completed successfully."
     $global:LASTEXITCODE = 0
     exit 0
