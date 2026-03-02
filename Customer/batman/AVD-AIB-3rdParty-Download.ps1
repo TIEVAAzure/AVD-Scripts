@@ -74,7 +74,7 @@ try {
     # ----------------------------------------------------------------------------------------------
     # EDIT THIS PER CUSTOMER FOLDER
     # ----------------------------------------------------------------------------------------------
-    $CustomerCode = "BWG"   # e.g. BWG, IMS
+    $CustomerCode = "batman"   # e.g. BWG, IMS
 
     # Cache-buster to avoid GitHub/CDN serving a stale copy mid-build
     $ts = Get-Date -Format "yyyyMMddHHmmss"
