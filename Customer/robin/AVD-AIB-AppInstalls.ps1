@@ -80,9 +80,7 @@ $baseUrl = "https://raw.githubusercontent.com/TIEVAAzure/AVD-Scripts/main/Applic
 # Keep these script names in sync with /Applications
 # --------------------------------------------------------------------------------------------------
 $AppScripts = @(
-    "AVD-AIB-7zip-Removal.ps1"
-    # "AVD-AIB-AdobeReaderDC-Update.ps1"
-    # "AVD-AIB-8x8-Update.ps1"
+    "AVD-AIB-AdobeReaderDC-Update.ps1"
 )
 
 # Always run child scripts using 64-bit PowerShell
