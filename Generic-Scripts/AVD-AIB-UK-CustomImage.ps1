@@ -1,5 +1,5 @@
 # =============================================================================
-# AVD UK Custom Image Template — Locale, Timezone & Regional Settings
+# AVD UK Custom Image Template - Locale, Timezone & Regional Settings
 # =============================================================================
 # Purpose:
 #   Bakes UK regional settings into a custom AVD image so every session host
@@ -24,7 +24,8 @@
 #     Enforce script signature check                  : NO
 # =============================================================================
 
-#Requires -RunAsAdministrator
+# Note: #Requires -RunAsAdministrator removed - AIB/Packer runs as SYSTEM
+# via a scheduled task wrapper which can fail the admin check despite being elevated.
 
 $LogPath = "C:\temp\AVD-UK-CustomImage.log"
 
@@ -46,7 +47,7 @@ function Write-Log {
 # HEADER
 # =============================================================================
 Write-Log "================================================================="
-Write-Log "AVD UK Custom Image Configuration — Started"
+Write-Log "AVD UK Custom Image Configuration - Started"
 Write-Log "================================================================="
 Write-Log "Running as : $([System.Security.Principal.WindowsIdentity]::GetCurrent().Name)"
 Write-Log "Hostname   : $env:COMPUTERNAME"
@@ -66,7 +67,7 @@ try {
     Write-Log "   Set-WinSystemLocale FAILED: $($_.Exception.Message)" "ERROR"
 }
 
-# NLS registry — ensures non-Unicode programs also use en-GB
+# NLS registry - ensures non-Unicode programs also use en-GB
 try {
     Set-ItemProperty -Path "HKLM:\SYSTEM\CurrentControlSet\Control\Nls\Language" `
         -Name "Default"         -Value "0809"
@@ -159,7 +160,7 @@ try {
             "sTimeFormat"      = "HH:mm:ss"
             "iTime"            = "1"             # 24-hour
             "iTLZero"          = "1"             # leading zero
-            "sCurrency"        = "£"
+            "sCurrency"        = [char]0x00A3  # £ (pound sign, safe for all encodings)
             "sMonDecimalSep"   = "."
             "sMonThousandSep"  = ","
             "sDecimal"         = "."
@@ -203,7 +204,7 @@ try {
     # Uses the international settings XML approach
     $XmlPath = "C:\temp\AVD-UK-IntlSettings.xml"
 
-    $XmlContent = @"
+    $XmlContent = @'
 <gs:GlobalizationServices xmlns:gs="urn:longhornGlobalizationUnattend">
     <gs:UserList>
         <gs:User UserID="Current" CopySettingsToDefaultUserAcct="true" CopySettingsToSystemAcct="true"/>
@@ -224,13 +225,14 @@ try {
         <gs:Locale Name="en-GB" SetAsCurrent="true" ResetAllSettings="true"/>
     </gs:UserLocale>
 </gs:GlobalizationServices>
-"@
+'@
 
     Set-Content -Path $XmlPath -Value $XmlContent -Encoding UTF8
     Write-Log "   International settings XML written to $XmlPath"
 
-    $ControlResult = & control.exe intl.cpl,,/f:"$XmlPath" 2>&1
-    Write-Log "   control intl.cpl result: $ControlResult"
+    $IntlArgs = "intl.cpl,,/f:`"$XmlPath`""
+    $ControlResult = Start-Process -FilePath "control.exe" -ArgumentList $IntlArgs -Wait -PassThru 2>&1
+    Write-Log "   control intl.cpl exit code: $($ControlResult.ExitCode)"
     Write-Log "   Welcome screen & system accounts: SUCCESS"
 } catch {
     Write-Log "   Welcome screen config FAILED: $($_.Exception.Message)" "ERROR"
@@ -261,7 +263,7 @@ try {
 # SUMMARY
 # =============================================================================
 Write-Log "================================================================="
-Write-Log "AVD UK Custom Image Configuration — Complete"
+Write-Log "AVD UK Custom Image Configuration - Complete"
 Write-Log "================================================================="
 Write-Log "  System Locale  : $(try { (Get-WinSystemLocale).Name } catch { 'ERROR' })"
 Write-Log "  Timezone       : $(try { (Get-TimeZone).Id } catch { 'ERROR' })"
