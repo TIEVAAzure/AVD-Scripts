@@ -23,7 +23,7 @@ param(
 
     # Enterprise/offline installer path or URL
     # Replace with your Foxit enterprise EXE package URL if downloading directly
-    [string]$DownloadUrl = "https://REPLACE-WITH-YOUR-FOXIT-ENTERPRISE-PACKAGE/FoxitPDFReader2025.3.0.35737_enu_Setup_Prom.exe",
+    [string]$DownloadUrl = "https://www.foxit.com/downloads/latest.html?product=Foxit-Reader&platform=Windows&version=&package_type=exe&language=ML&distID=&operating_type=64",
 
     # Optional local installer override (useful in AIB if you pre-stage the installer)
     [string]$LocalInstallerPath = "",
