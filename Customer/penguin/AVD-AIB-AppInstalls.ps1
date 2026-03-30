@@ -80,7 +80,7 @@ $baseUrl = "https://raw.githubusercontent.com/TIEVAAzure/AVD-Scripts/main/Applic
 # Keep these script names in sync with /Applications
 # --------------------------------------------------------------------------------------------------
 $AppScripts = @(
-    "AVD-AIB-7zip-Removal.ps1"
+    "AVD-AIB-Foxit-PDF-Reader-Update.ps1"
     # "AVD-AIB-AdobeReaderDC-Update.ps1"
     # "AVD-AIB-8x8-Update.ps1"
 )
