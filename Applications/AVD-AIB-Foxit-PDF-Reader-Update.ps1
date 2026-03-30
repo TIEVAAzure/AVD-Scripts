@@ -4,35 +4,35 @@ AVD-AIB-FoxitPDFReader-Update.ps1
 PURPOSE
   Installs / upgrades Foxit PDF Reader only if the installed version is older.
 
-WHY THIS EXISTS
-  - Golden images often need a known PDF reader baseline for app compatibility and security.
-  - Foxit installer URLs may be version-specific, so we compare installed version to TargetVersion.
+NOTES
+  - For Foxit, in-place upgrade is preferred over uninstall/reinstall to avoid interactive uninstall prompts.
+  - This script writes output to STDOUT for capture by AppInstalls / Packer.
 
-LOGGING
-  - This script writes output to STDOUT (captured by AppInstalls into a child log + Packer console)
-
-EXIT CODES (CONTRACT)
+EXIT CODES
   0    = success
   1    = fail
-  3010 = reboot required (treated as success by the orchestrator)
+  3010 = reboot required
 ================================================================================================= #>
 
 param(
-    # Target version to compare against (update these during image cycles)
     [string]$TargetVersion = "2025.3.0.35737",
 
-    # Direct offline EXE URL (update this during image cycles)
-    [string]$DownloadUrl = "https://www.foxit.com/downloads/latest.html?product=Foxit-Reader&platform=Windows&version=&package_type=exe&language=ML&distID=&operating_type=64"
+    # Replace with your actual Foxit package URL or use LocalInstallerPath
+    [string]$DownloadUrl = "https://www.foxit.com/downloads/latest.html?product=Foxit-Reader&platform=Windows&version=&package_type=exe&language=ML&distID=&operating_type=64",
+
+    # Optional pre-staged installer path
+    [string]$LocalInstallerPath = "",
+
+    [int64]$MinimumInstallerBytes = 30000000
 )
 
 $ErrorActionPreference = 'Stop'
 try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12 } catch {}
 
-# Where we stage the installer
-$InstallerPath = "$env:TEMP\FoxitPDFReader_$($TargetVersion).exe"
+$UniqueName = "FoxitPDFReader_{0}_{1}.exe" -f $TargetVersion, ([guid]::NewGuid().ToString("N"))
+$InstallerPath = if ($LocalInstallerPath) { $LocalInstallerPath } else { Join-Path $env:TEMP $UniqueName }
 
 function Get-FoxitReaderInstall {
-    # Search both 64-bit and WOW6432Node uninstall trees
     $paths = @(
         "HKLM:\SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall\*",
         "HKLM:\SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*"
@@ -49,19 +49,13 @@ function Get-FoxitReaderInstall {
 function Convert-ToVersion {
     param([string]$VersionString)
 
-    if ([string]::IsNullOrWhiteSpace($VersionString)) {
-        return $null
-    }
+    if ([string]::IsNullOrWhiteSpace($VersionString)) { return $null }
 
     $clean = ($VersionString -replace '[^0-9\.]', '').Trim('.')
-    if (-not $clean) {
-        return $null
-    }
+    if (-not $clean) { return $null }
 
     $parts = $clean.Split('.')
-    while ($parts.Count -lt 4) {
-        $parts += '0'
-    }
+    while ($parts.Count -lt 4) { $parts += '0' }
 
     $normalized = ($parts[0..3] -join '.')
 
@@ -69,32 +63,8 @@ function Convert-ToVersion {
         return [version]$normalized
     }
     catch {
+        Write-Host "Failed to parse version string: $VersionString"
         return $null
-    }
-}
-
-function Uninstall-RegistryApp {
-    param([Parameter(Mandatory)] $App)
-
-    $uninstall = $App.UninstallString
-    if (-not $uninstall) {
-        Write-Host "No UninstallString found for $($App.DisplayName). Skipping uninstall."
-        return
-    }
-
-    # If MSI GUID present, use msiexec /x
-    if ($uninstall -match "{[0-9A-Fa-f-]+}") {
-        $guid = $matches[0]
-        Write-Host "Uninstalling via MSI: $guid"
-        $p = Start-Process "msiexec.exe" -ArgumentList "/x $guid /qn /norestart" -Wait -PassThru
-        if ($p.ExitCode -ne 0 -and $p.ExitCode -ne 3010) { throw "MSI uninstall failed with exit code $($p.ExitCode)" }
-    }
-    else {
-        # Fallback: execute uninstall string via cmd.exe
-        Write-Host "Uninstalling via command string"
-        $cmd = "$uninstall /quiet /norestart"
-        $p = Start-Process "cmd.exe" -ArgumentList "/c $cmd" -Wait -PassThru
-        if ($p.ExitCode -ne 0 -and $p.ExitCode -ne 3010) { throw "EXE uninstall failed with exit code $($p.ExitCode)" }
     }
 }
 
@@ -105,7 +75,7 @@ try {
     $targetVer = Convert-ToVersion -VersionString $TargetVersion
 
     if (-not $targetVer) {
-        throw "Could not parse target version: $TargetVersion"
+        throw "TargetVersion '$TargetVersion' could not be parsed."
     }
 
     if ($existing) {
@@ -119,29 +89,55 @@ try {
             exit 0
         }
 
-        Write-Host "Installed version is older. Uninstalling..."
-        Uninstall-RegistryApp -App $existing
+        Write-Host "Installed version is older. Proceeding with in-place upgrade."
     }
     else {
-        Write-Host "No existing Foxit PDF Reader found."
+        Write-Host "No existing Foxit PDF Reader installation found. Proceeding with install."
     }
 
-    if (Test-Path $InstallerPath) { Remove-Item $InstallerPath -Force -ErrorAction SilentlyContinue }
+    if (-not $LocalInstallerPath) {
+        if (Test-Path $InstallerPath) {
+            Remove-Item $InstallerPath -Force -ErrorAction SilentlyContinue
+        }
 
-    Write-Host "Downloading offline Foxit PDF Reader installer..."
-    Invoke-WebRequest -Uri $DownloadUrl -OutFile $InstallerPath -UseBasicParsing
+        Write-Host "Downloading offline Foxit PDF Reader installer..."
+        Invoke-WebRequest -Uri $DownloadUrl -OutFile $InstallerPath -UseBasicParsing
 
-    $size = (Get-Item $InstallerPath).Length
-    if ($size -lt 30000000) { throw "Installer too small (likely corrupted). Size=$size" }
+        $size = (Get-Item $InstallerPath).Length
+        Write-Host "Downloaded installer size: $size bytes"
 
-    Write-Host "Installing Foxit PDF Reader silently..."
+        if ($size -lt $MinimumInstallerBytes) {
+            throw "Installer too small (likely corrupted). Size=$size"
+        }
+    }
+    else {
+        if (-not (Test-Path $InstallerPath)) {
+            throw "Local installer path not found: $InstallerPath"
+        }
+
+        $size = (Get-Item $InstallerPath).Length
+        Write-Host "Using pre-staged installer: $InstallerPath"
+
+        if ($size -lt $MinimumInstallerBytes) {
+            throw "Local installer too small (likely incorrect file). Size=$size"
+        }
+    }
+
+    Write-Host "Installing / upgrading Foxit PDF Reader silently..."
     $p = Start-Process -FilePath $InstallerPath -ArgumentList "/quiet /norestart" -Wait -PassThru
-    if ($p.ExitCode -ne 0 -and $p.ExitCode -ne 3010) { throw "Installer failed with exit code $($p.ExitCode)" }
 
-    Remove-Item $InstallerPath -Force -ErrorAction SilentlyContinue
+    if ($p.ExitCode -ne 0 -and $p.ExitCode -ne 3010) {
+        throw "Installer failed with exit code $($p.ExitCode)"
+    }
+
+    Start-Sleep -Seconds 15
+
+    if (-not $LocalInstallerPath) {
+        Remove-Item $InstallerPath -Force -ErrorAction SilentlyContinue
+    }
 
     Write-Host "Foxit PDF Reader update completed successfully."
-    exit 0
+    exit $p.ExitCode
 }
 catch {
     Write-Host "Foxit PDF Reader update failed: $($_.Exception.Message)"
