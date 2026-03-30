@@ -22,7 +22,7 @@ param(
     [string]$TargetVersion = "2025.3.0.35737",
 
     # Direct offline EXE URL (update this during image cycles)
-    [string]$DownloadUrl = "https://REPLACE-WITH-YOUR-FOXIT-INSTALLER-URL/FoxitPDFReader20253_L10N_Setup_Prom_x64.exe"
+    [string]$DownloadUrl = "https://www.foxit.com/downloads/latest.html?product=Foxit-Reader&platform=Windows&version=&package_type=exe&language=ML&distID=&operating_type=64"
 )
 
 $ErrorActionPreference = 'Stop'
